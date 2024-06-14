@@ -1,0 +1,31 @@
+[tool.black]
+line-length = 120
+
+[tool.flake8]
+max-line-length = 120
+
+[tool.isort]
+profile = "black"
+known_local_folder = ["src"]
+
+[project.optional-dependencies]
+dev = ["black", "isort", "pytest"]
+
+[project]
+name = "trixellookupserver"
+version = "0.0.0"
+description = "Trixel-Lookup-Service (server) for maintaining Trixel-Management-Services."
+readme = "README.md"
+authors = [{ name = "Till", email = "till@fleisch.dev" }]
+license = { file = "LICENSE" }
+keywords = ["trixel", "private", "privacy focused","environmental monitoring", "sensor network"]
+dependencies = [
+    'tomli; python_version < "3.11"',
+    'fastapi',
+    'packaging',
+]
+
+[project.urls]
+Homepage = "https://github.com/TillFleisch/TrixelLookupService"
+Repository = "https://github.com/TillFleisch/TrixelLookupService.git"
+Issues = "https://github.com/TillFleisch/TrixelLookupService/issues"
