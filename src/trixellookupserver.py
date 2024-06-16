@@ -1,10 +1,10 @@
 """Entry point for the Trixel Lookup Service API."""
 
+import importlib
 from http import HTTPStatus
 from typing import Annotated, List
 
 import packaging.version
-import pkg_resources
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ from schema import Ping, Version
 
 TAG_TRIXEL_INFO = "Trixel Information"
 
-api_version = pkg_resources.get_distribution("trixellookupserver").version
+api_version = importlib.metadata.version("trixellookupserver")
 
 model.Base.metadata.create_all(bind=engine)
 
