@@ -9,7 +9,7 @@ profile = "black"
 known_local_folder = ["src"]
 
 [project.optional-dependencies]
-dev = ["black", "isort", "pytest"]
+dev = ["black", "isort", "pytest", "pytest-order"]
 
 [project]
 name = "trixellookupserver"
@@ -23,6 +23,8 @@ dependencies = [
     'tomli; python_version < "3.11"',
     'fastapi',
     'packaging',
+    'SQLAlchemy',
+    'pynyhtm'
 ]
 
 [project.urls]

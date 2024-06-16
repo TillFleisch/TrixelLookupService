@@ -166,3 +166,4 @@ bin/
 cache/
 .vscode/
 .vs/
+tls_sqlite.db
