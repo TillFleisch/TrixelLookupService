@@ -1,5 +1,6 @@
 """Global database wrappers."""
 
+from pydantic import PositiveInt
 from pynyhtm import HTM
 from sqlalchemy import and_, update
 from sqlalchemy.orm import Session
@@ -18,14 +19,16 @@ def create_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType,
     :raises ValueError: if the trixel id is invalid
     """
     try:
-        HTM.get_level(trixel_id)
-    except Exception:
-        raise ValueError(f"Invalid trixel id: {trixel_id}")
+        level = HTM.get_level(trixel_id)
 
-    trixel = model.TrixelMap(id=trixel_id, type_=type_, sensor_count=sensor_count)
-    db.add(trixel)
-    db.commit()
-    return trixel
+        trixel = model.TrixelMap(id=trixel_id, type_=type_, level=level, sensor_count=sensor_count)
+        db.add(trixel)
+        db.commit()
+
+        return trixel
+
+    except ValueError:
+        raise ValueError(f"Invalid trixel id: {trixel_id}")
 
 
 def update_trixel_map(
@@ -90,5 +93,48 @@ def get_trixel_map(
     types = types if types is not None else [enum.value for enum in model.MeasurementType]
 
     return (
-        db.query(model.TrixelMap).where(and_(model.TrixelMap.id == trixel_id, model.TrixelMap.type_.in_(types))).all()
+        db.query(model.TrixelMap)
+        .where(
+            and_(
+                model.TrixelMap.id == trixel_id,
+                model.TrixelMap.type_.in_(types),
+                model.TrixelMap.sensor_count > 0,
+            )
+        )
+        .all()
     )
+
+
+def get_trixel_ids(
+    db: Session,
+    trixel_id: int | None = None,
+    types: list[model.MeasurementType] | None = None,
+    limit: PositiveInt = 100,
+    offset: int = 0,
+) -> list[int]:
+    """Get a list of trixels within the provided region.
+
+    :param trixel_id: root trixel, which is used for retrieval, all root-trixels are used if none is provided
+    :param types: optional list of types which restrict results
+    :param limit: search result limit
+    :param offset: skips the first n results
+    :returns: list of trixel_ids
+    :raises ValueError: if the trixel id is invalid
+    """
+    types = types if types is not None else [enum.value for enum in model.MeasurementType]
+
+    query = db.query(model.TrixelMap.id).where(model.TrixelMap.sensor_count > 0).where(model.TrixelMap.type_.in_(types))
+
+    if trixel_id is not None:
+        try:
+            level = HTM.get_level(trixel_id)
+
+            # Select all trixels where the ID contains the provided trixel_id as a prefix
+            query = query.where(model.TrixelMap.level >= level).where(
+                model.TrixelMap.id.bitwise_rshift((model.TrixelMap.level - level) * 2) == trixel_id
+            )
+        except ValueError:
+            raise ValueError(f"Invalid trixel id: {trixel_id}")
+
+    result = query.distinct().offset(offset=offset).limit(limit=limit).all()
+    return [x[0] for x in result]

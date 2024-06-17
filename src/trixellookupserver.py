@@ -7,6 +7,7 @@ from typing import Annotated, List
 import packaging.version
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query
+from pydantic import PositiveInt
 from sqlalchemy.orm import Session
 
 import crud
@@ -57,6 +58,51 @@ def ping() -> Ping:
 def get_semantic_version() -> Version:
     """Get the precise version of the currently running API."""
     return Version(version=api_version)
+
+
+@app.get(
+    "/trixel",
+    name="Get all trixels which have registered sensors.",
+    summary="Retrieve an overview of all trixels, which contain at least one sensors of the specified types.",
+    tags=[TAG_TRIXEL_INFO],
+)
+def get_trixel_list(
+    types: Annotated[List[model.MeasurementType], Query()] = None,
+    limit: PositiveInt = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+) -> list[int]:
+    """Get a list of trixel ids with at least one sensor (filtered by measurement type)."""
+    if offset < 0:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Offset cannot be negative.")
+
+    try:
+        return crud.get_trixel_ids(db, types=types, limit=limit, offset=offset)
+    except ValueError:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id")
+
+
+@app.get(
+    "/trixel/{trixel_id}",
+    name="Get sub-trixels which have registered sensors.",
+    summary="Retrieve an overview of sub-trixels which contain at least one sensors of the specified types.",
+    tags=[TAG_TRIXEL_INFO],
+)
+def get_sub_trixel_list(
+    trixel_id: int,
+    types: Annotated[List[model.MeasurementType], Query()] = None,
+    limit: PositiveInt = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+) -> list[int]:
+    """Get a list of sub-trixel ids with at least one sensor (filtered by measurement type)."""
+    if offset < 0:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Offset cannot be negative.")
+
+    try:
+        return crud.get_trixel_ids(db, trixel_id=trixel_id, types=types, limit=limit, offset=offset)
+    except ValueError:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id")
 
 
 @app.get(

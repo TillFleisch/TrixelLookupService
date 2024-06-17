@@ -6,25 +6,25 @@ from model import MeasurementType
 
 
 class Ping(BaseModel):
-    """Response model for ping requests."""
+    """Response schema for ping requests."""
 
     ping: str = "pong"
 
 
 class Version(BaseModel):
-    """Response model for version requests."""
+    """Response schema for version requests."""
 
     version: str
 
 
 class TrixelMapBase(BaseModel):
-    """Base model for trixel map entries."""
+    """Base Schema for trixel map entries."""
 
     id: int
 
 
 class TrixelMap(TrixelMapBase):
-    """Model for reading from the trixel map."""
+    """Schema for reading from the trixel map."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -32,7 +32,7 @@ class TrixelMap(TrixelMapBase):
 
 
 class TrixelMapUpdate(TrixelMapBase):
-    """Model for updating the sensor count for a measurement type in a trixel."""
+    """Schema for updating the sensor count for a measurement type in a trixel."""
 
     type_: MeasurementType
     sensor_count: int

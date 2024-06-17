@@ -121,6 +121,75 @@ def test_update_trixel_sensor_count_overwrite():
     assert data["sensor_counts"]["ambient_temperature"] == 8
 
 
+@pytest.mark.order(5)
+def test_get_trixel_list():
+    """Test global trixel list retrieval."""
+    response = client.get("/trixel")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert data[0] == 15
+
+    response = client.put("/trixel/141/sensor_count/ambient_temperature?sensor_count=1")
+    assert response.status_code == HTTPStatus.OK, response.text
+    response = client.put("/trixel/141/sensor_count/relative_humidity?sensor_count=1")
+    assert response.status_code == HTTPStatus.OK, response.text
+    response = client.put("/trixel/8/sensor_count/ambient_temperature?sensor_count=1")
+    assert response.status_code == HTTPStatus.OK, response.text
+
+    response = client.get("/trixel")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert len(data) == 3
+    assert 15 in data
+    assert 8 in data
+    assert 141 in data
+
+    response = client.get("/trixel?types=relative_humidity")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert len(data) == 2
+    assert 15 in data
+    assert 141 in data
+
+
+@pytest.mark.order(6)
+def test_get_trixel_list_offset_limit():
+    """Test global trixel list retrieval with offset and limits."""
+    response = client.get("/trixel?offset=1&limit=1")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert len(data) == 1
+    assert 15 in data
+
+
+def test_empty_trixel_list(empty_db):
+    """Test global trixel retrieval on empty db."""
+    response = client.get("/trixel")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert len(data) == 0
+
+
+@pytest.mark.order(6)
+def test_get_sub_trixel_list():
+    """Test sub-trixel list retrieval."""
+    response = client.get("/trixel/35")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert len(data) == 1
+    assert data[0] == 141
+
+
+@pytest.mark.order(6)
+@pytest.mark.parametrize("id", [37, 566])
+def test_non_existent_sub_trixel_list(id: int):
+    """Test sub-trixel list retrieval on non existent/empty trixel."""
+    response = client.get(f"/trixel/{id}")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert len(data) == 0
+
+
 def test_empty_sensor_count(empty_db):
     """Test get sensor_count for empty(undefined) trixel."""
     response = client.get("/trixel/15/sensor_count")

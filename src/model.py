@@ -21,7 +21,12 @@ class TrixelMap(Base):
 
     # Combined primary key from id, type
     id = Column(Integer, primary_key=True)
+    # Pre-computed level attribute for faster/simpler queries
+    level = Column(Integer, nullable=False)
     type_ = Column(Enum(MeasurementType), primary_key=True)
     sensor_count = Column(Integer, default=0)
 
-    __table_args__ = (CheckConstraint(sensor_count >= 0, name="check_non_negative_sensor_count"), {})
+    __table_args__ = (
+        CheckConstraint(sensor_count >= 0, name="check_non_negative_sensor_count"),
+        CheckConstraint(level >= 0, name="check_non_negative_level"),
+    )
