@@ -6,7 +6,7 @@ from typing import Annotated, List
 
 import packaging.version
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Path, Query
 from pydantic import PositiveInt
 from sqlalchemy.orm import Session
 
@@ -67,9 +67,14 @@ def get_semantic_version() -> Version:
     tags=[TAG_TRIXEL_INFO],
 )
 def get_trixel_list(
-    types: Annotated[List[model.MeasurementType], Query()] = None,
-    limit: PositiveInt = 100,
-    offset: int = 0,
+    types: Annotated[
+        List[model.MeasurementType],
+        Query(
+            description="List of measurement types which restrict results. If none are provided, all types are used."
+        ),
+    ] = None,
+    limit: PositiveInt = Query(100, description="Limits the number of results."),
+    offset: PositiveInt = Query(0, description="Skip the first n results."),
     db: Session = Depends(get_db),
 ) -> list[int]:
     """Get a list of trixel ids with at least one sensor (filtered by measurement type)."""
@@ -89,10 +94,15 @@ def get_trixel_list(
     tags=[TAG_TRIXEL_INFO],
 )
 def get_sub_trixel_list(
-    trixel_id: int,
-    types: Annotated[List[model.MeasurementType], Query()] = None,
-    limit: PositiveInt = 100,
-    offset: int = 0,
+    trixel_id: int = Path(description="Root trixel which makes up the search space for sub-trixels."),
+    types: Annotated[
+        List[model.MeasurementType],
+        Query(
+            description="List of measurement types which restrict results. If none are provided, all types are used."
+        ),
+    ] = None,
+    limit: PositiveInt = Query(100, description="Limits the number of results."),
+    offset: PositiveInt = Query(0, description="Skip the first n results."),
     db: Session = Depends(get_db),
 ) -> list[int]:
     """Get a list of sub-trixel ids with at least one sensor (filtered by measurement type)."""
@@ -112,8 +122,13 @@ def get_sub_trixel_list(
     tags=[TAG_TRIXEL_INFO],
 )
 def get_trixel_info(
-    trixel_id: int,
-    types: Annotated[List[model.MeasurementType], Query()] = None,
+    trixel_id: int = Path(description="The id of the trixel for which the sensor count is to be determined."),
+    types: Annotated[
+        List[model.MeasurementType],
+        Query(
+            description="List of measurement types which restrict results. If none are provided, all types are used."
+        ),
+    ] = None,
     db: Session = Depends(get_db),
 ) -> schema.TrixelMap:
     """Get the sensor count for a trixel for different measurement types."""
@@ -137,7 +152,10 @@ def get_trixel_info(
     tags=[TAG_TRIXEL_INFO],
 )
 def update_trixel_sensor_count(
-    trixel_id: int, type: model.MeasurementType, sensor_count: int, db: Session = Depends(get_db)
+    trixel_id: int = Path(description="The Trixel id for which the sensor count is updated."),
+    type: model.MeasurementType = Path(description="Type of measurement for which the sensor count is updated."),
+    sensor_count: int = Query(description="The new number of sensors for the given type within the trixel."),
+    db: Session = Depends(get_db),
 ) -> schema.TrixelMapUpdate:
     """Update (or insert new) trixel sensor count within the DB."""
     # TODO: requires auth (only allowed from any TMS, or possibly the one who manages the trixel)
