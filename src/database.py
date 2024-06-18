@@ -29,3 +29,22 @@ engine = create_engine(DATABASE_URL, connect_args=connect_args)
 MetaSession = sessionmaker(autoflush=False, autocommit=False, bind=engine)
 
 Base = declarative_base()
+
+
+def get_db():
+    """Instantiate a temporary session for endpoint invocation."""
+    db = MetaSession()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def except_columns(base, *exclusions: str) -> list[str]:
+    """Get a list of column names except the ones provided.
+
+    :param base: model from which columns are retrieved
+    :param exclusions: list of column names which should be excluded
+    :returns: list of column names which are not present in the exclusions
+    """
+    return [c for c in base.__table__.c if c.name not in exclusions]

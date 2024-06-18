@@ -13,10 +13,17 @@ from sqlalchemy.orm import Session
 import crud
 import model
 import schema
-from database import MetaSession, engine
+from database import engine, get_db
 from schema import Ping, Version
+from trixel_management.trixel_management import TAG_TMS
+from trixel_management.trixel_management import router as trixel_management_router
 
 TAG_TRIXEL_INFO = "Trixel Information"
+
+openapi_tags = [
+    {"name": TAG_TRIXEL_INFO},
+    {"name": TAG_TMS},
+]
 
 api_version = importlib.metadata.version("trixellookupserver")
 
@@ -28,16 +35,9 @@ app = FastAPI(
                Coordinates initial communication to determine the correct TMS for a contributor.""",
     version=api_version,
     root_path=f"/v{packaging.version.Version(api_version).major}",
+    openapi_tags=openapi_tags,
 )
-
-
-def get_db():
-    """Instantiate a temporary session for endpoint invocation."""
-    db = MetaSession()
-    try:
-        yield db
-    finally:
-        db.close()
+app.include_router(trixel_management_router)
 
 
 @app.get(
@@ -159,6 +159,7 @@ def update_trixel_sensor_count(
 ) -> schema.TrixelMapUpdate:
     """Update (or insert new) trixel sensor count within the DB."""
     # TODO: requires auth (only allowed from any TMS, or possibly the one who manages the trixel)
+    # could restrict to only allowed by managing tms (expensive lookup required? caching?)
     try:
         return crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
     except ValueError:

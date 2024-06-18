@@ -6,10 +6,10 @@ max-line-length = 120
 
 [tool.isort]
 profile = "black"
-known_local_folder = ["src"]
+known_local_folder = ["src", "tests"]
 
 [project.optional-dependencies]
-dev = ["black", "isort", "pytest", "pytest-order"]
+dev = ["black", "isort", "pytest", "pytest-order", "requests_mock"]
 
 [project]
 name = "trixellookupserver"
@@ -24,7 +24,8 @@ dependencies = [
     'fastapi',
     'packaging',
     'SQLAlchemy',
-    'pynyhtm'
+    'pynyhtm',
+    'requests'
 ]
 
 [project.urls]
