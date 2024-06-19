@@ -3,9 +3,24 @@
 from pydantic import PositiveInt
 from pynyhtm import HTM
 from sqlalchemy import and_, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import model
+
+
+def add_level_lookup(db: Session, lookup: dict[int, int]):
+    """Insert an entry within the level lookup table.
+
+    :param lookup: dict containing the level for each trixel
+    :param level: level at which the trixel is located
+    """
+    for trixel_id, level in lookup.items():
+        try:
+            db.add(model.LevelLookup(trixel_id=trixel_id, level=level))
+            db.commit()
+        except IntegrityError:
+            db.rollback()
 
 
 def create_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType, sensor_count: int) -> model.TrixelMap:
@@ -21,10 +36,11 @@ def create_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType,
     try:
         level = HTM.get_level(trixel_id)
 
-        trixel = model.TrixelMap(id=trixel_id, type_=type_, level=level, sensor_count=sensor_count)
+        trixel = model.TrixelMap(id=trixel_id, type_=type_, sensor_count=sensor_count)
         db.add(trixel)
         db.commit()
 
+        add_level_lookup(db, {trixel_id: level})
         return trixel
 
     except ValueError:
@@ -123,15 +139,19 @@ def get_trixel_ids(
     """
     types = types if types is not None else [enum.value for enum in model.MeasurementType]
 
-    query = db.query(model.TrixelMap.id).where(model.TrixelMap.sensor_count > 0).where(model.TrixelMap.type_.in_(types))
+    query = (
+        db.query(model.TrixelMap.id, model.LevelLookup)
+        .where(and_(model.TrixelMap.id == model.LevelLookup.trixel_id, model.TrixelMap.sensor_count > 0))
+        .where(model.TrixelMap.type_.in_(types))
+    )
 
     if trixel_id is not None:
         try:
             level = HTM.get_level(trixel_id)
 
             # Select all trixels where the ID contains the provided trixel_id as a prefix
-            query = query.where(model.TrixelMap.level >= level).where(
-                model.TrixelMap.id.bitwise_rshift((model.TrixelMap.level - level) * 2) == trixel_id
+            query = query.where(model.LevelLookup.level >= level).where(
+                model.TrixelMap.id.bitwise_rshift((model.LevelLookup.level - level) * 2) == trixel_id
             )
         except ValueError:
             raise ValueError(f"Invalid trixel id: {trixel_id}")

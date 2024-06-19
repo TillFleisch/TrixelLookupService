@@ -37,7 +37,7 @@ class TMSDelegation(Base):
     __tablename__ = "TMSDelegation"
 
     tms_id = Column(Integer, ForeignKey("TrixelManagementServer.id"), primary_key=True, nullable=False)
-    trixel_id = Column(Integer, primary_key=True, nullable=False)
+    trixel_id = Column(Integer, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False)
     exclude = Column(Boolean, default=False, nullable=False)
 
     tms = relationship("TrixelManagementServer", back_populates="delegations")

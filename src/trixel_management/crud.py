@@ -8,6 +8,7 @@ from sqlalchemy import and_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
+from crud import add_level_lookup
 from database import except_columns
 
 from . import model
@@ -155,17 +156,20 @@ def insert_delegations(db: Session, tms_id: int, trixel_ids: list[int]) -> model
         raise RuntimeError("Trixels cannot be delegated to deactivated TMS.")
 
     delegations = list()
+    level_lookup = dict()
     for trixel in trixel_ids:
         try:
-            HTM.get_level(trixel)
+            level = HTM.get_level(trixel)
         except ValueError:
             raise ValueError(f"Invalid trixel id: {trixel}")
         tms_delegation = model.TMSDelegation(tms_id=tms.id, trixel_id=trixel)
         db.add(tms_delegation)
         delegations.append(tms_delegation)
+        level_lookup[trixel] = level
 
     db.commit()
 
+    add_level_lookup(db, level_lookup)
     for tms_delegation in delegations:
         db.refresh(tms_delegation)
     return delegations
@@ -189,7 +193,7 @@ def get_all_delegations(
             model.TrixelManagementServer,
             and_(
                 model.TMSDelegation.tms_id == model.TrixelManagementServer.id,
-                model.TrixelManagementServer.active is True,
+                model.TrixelManagementServer.active == 1,
             ),
         )
         .offset(offset=offset)
@@ -213,20 +217,20 @@ def get_tms_delegations(db: Session, tms_id: int) -> list[model.TMSDelegation]:
 
     res = (
         db.query(model.TMSDelegation, self)
-        .where(and_(model.TMSDelegation.tms_id == tms_id))
+        .where(model.TMSDelegation.tms_id == tms_id)
         .join(
             model.TrixelManagementServer,
             and_(
                 model.TMSDelegation.tms_id == model.TrixelManagementServer.id,
-                model.TrixelManagementServer.active is True,
+                model.TrixelManagementServer.active == 1,
             ),
         )
         .join(
             self,
             and_(
                 model.TMSDelegation.trixel_id == self.trixel_id,
-                model.TMSDelegation.exclude is True,
-                self.exclude is False,
+                model.TMSDelegation.exclude == 1,
+                self.exclude == 0,
             ),
             isouter=True,
         )
