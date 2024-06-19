@@ -43,6 +43,9 @@ def get_tms_list(
     name="Get TMS info.",
     summary="Get detailed information about a TMS.",
     tags=[TAG_TMS],
+    responses={
+        404: {"content": {"application/json": {"example": {"detail": "TMS with the given ID does not exist."}}}},
+    },
 )
 def get_tms(
     tms_id: int = Path(description="ID of the desired TMS."),
@@ -59,6 +62,14 @@ def get_tms(
     name="Add TMS.",
     summary="Add a TMS to this TLS.",
     tags=[TAG_TMS],
+    responses={
+        409: {
+            "content": {
+                "application/json": {"example": {"detail": "Maximum number of Trixel Management Servers reached!"}}
+            }
+        },
+        400: {"content": {"application/json": {"example": {"detail": "TMS ping unsuccessful!"}}}},
+    },
 )
 def create_tms(
     host: str = Query(description="Address under which the TMS is available."),
@@ -98,6 +109,10 @@ def create_tms(
     name="Update TMS details.",
     summary="Update TMS details.",
     tags=[TAG_TMS],
+    responses={
+        403: {"content": {"application/json": {"example": {"detail": "Can only modify own TMS properties."}}}},
+        401: {"content": {"application/json": {"example": {"detail": "Invalid TMS authentication token!"}}}},
+    },
 )
 def update_tms(
     host: str = Query(description="New address under which the TMS is available."),
