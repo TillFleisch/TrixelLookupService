@@ -1,18 +1,21 @@
 """Entry point for the Trixel Lookup Service API."""
 
+import base64
+import binascii
 import importlib
 from http import HTTPStatus
 from typing import Annotated, List
 
 import packaging.version
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Path, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query
 from pydantic import PositiveInt
 from sqlalchemy.orm import Session
 
 import crud
 import model
 import schema
+import trixel_management
 from database import engine, get_db
 from schema import Ping, Version
 from trixel_management.schema import TrixelManagementServer
@@ -156,20 +159,27 @@ def get_trixel_info(
     tags=[TAG_TRIXEL_INFO],
     responses={
         400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
+        403: {"content": {"application/json": {"example": {"detail": "Can only modify own TMS properties."}}}},
+        401: {"content": {"application/json": {"example": {"detail": "Invalid TMS authentication token!"}}}},
     },
 )
 def update_trixel_sensor_count(
     trixel_id: int = Path(description="The Trixel id for which the sensor count is updated."),
     type: model.MeasurementType = Path(description="Type of measurement for which the sensor count is updated."),
     sensor_count: int = Query(description="The new number of sensors for the given type within the trixel."),
+    token: str = Header(description="TMS authentication token."),
     db: Session = Depends(get_db),
 ) -> schema.TrixelMapUpdate:
     """Update (or insert new) trixel sensor count within the DB."""
-    # TODO: requires auth (only allowed from any TMS, or possibly the one who manages the trixel)
-    # could restrict to only allowed by managing tms (expensive lookup required? caching?)
     try:
+        tms_id = trixel_management.crud.verify_tms_token(db, token=base64.b64decode(token))
+
+        if crud.get_responsible_tms(db, trixel_id=trixel_id).id != tms_id:
+            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only modify own TMS properties.")
 
         return crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
+    except (binascii.Error, PermissionError):
+        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Invalid TMS authentication token!")
     except ValueError:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
 

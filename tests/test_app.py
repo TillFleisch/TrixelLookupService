@@ -1,9 +1,13 @@
 """Global tests for the Trixel Lookup Server app."""
 
+import urllib
 from http import HTTPStatus
 
 import pytest
+import requests_mock
 from conftest import client
+
+pytest.tms_token = None
 
 
 @pytest.mark.order(100)
@@ -25,7 +29,16 @@ def test_version():
 @pytest.mark.order(101)
 def test_update_trixel_sensor_count_temperature(empty_db):
     """Test trixel update/insertion for temperature."""
-    response = client.put("/trixel/15/sensor_count/ambient_temperature?sensor_count=3")
+    with requests_mock.Mocker() as m:
+        host = "bread.crumbs"
+        m.get("https://bread.crumbs/ping", text='{"ping":"pong"}')
+        response = client.post(f"/TMS/?{urllib.parse.urlencode({'host':host})}")
+        assert response.status_code == HTTPStatus.OK, response.text
+        pytest.tms_token = response.json()["token"]
+
+    response = client.put(
+        "/trixel/15/sensor_count/ambient_temperature?sensor_count=3", headers={"token": pytest.tms_token}
+    )
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
     assert data["id"] == 15
@@ -42,7 +55,9 @@ def test_update_trixel_sensor_count_temperature(empty_db):
 @pytest.mark.order(102)
 def test_update_trixel_sensor_count_humidity():
     """Test trixel update/insertion for relative humidity."""
-    response = client.put("/trixel/15/sensor_count/relative_humidity?sensor_count=4")
+    response = client.put(
+        "/trixel/15/sensor_count/relative_humidity?sensor_count=4", headers={"token": pytest.tms_token}
+    )
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
     assert data["id"] == 15
@@ -54,6 +69,34 @@ def test_update_trixel_sensor_count_humidity():
     assert len(data["sensor_counts"]) == 1
     assert "relative_humidity" in data["sensor_counts"]
     assert data["sensor_counts"]["relative_humidity"] == 4
+
+
+@pytest.mark.order(102)
+@pytest.mark.parametrize("id", [4, 16, -1, 123])
+def test_update_trixel_invalid_id(id: int):
+    """Test invalid trixel id for put/update trixel sensor count endpoint."""
+    response = client.put(
+        f"/trixel/{id}/sensor_count/ambient_temperature?sensor_count=4", headers={"token": pytest.tms_token}
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST, response.text
+
+
+@pytest.mark.order(102)
+@pytest.mark.parametrize("id", [8, 35, 141, 55345234234])
+def test_get_tms_for_trixel(id: int):
+    """Test responsible TMS retrieval."""
+    response = client.get(f"/trixel/{id}/TMS")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert data["id"] == 1
+    assert "token" not in data
+
+
+@pytest.mark.order(102)
+def test_update_trixel_invalid_token():
+    """Test put/update sensor_count with invalid token."""
+    response = client.put("/trixel/1/sensor_count/ambient_temperature?sensor_count=4", headers={"token": "fake-token"})
+    assert response.status_code == HTTPStatus.UNAUTHORIZED, response.text
 
 
 @pytest.mark.order(103)
@@ -69,7 +112,9 @@ def test_update_trixel_sensor_count_combined():
 @pytest.mark.order(104)
 def test_update_trixel_sensor_count_overwrite():
     """Test update to existing trixel from previous insertions."""
-    response = client.put("/trixel/15/sensor_count/ambient_temperature?sensor_count=8")
+    response = client.put(
+        "/trixel/15/sensor_count/ambient_temperature?sensor_count=8", headers={"token": pytest.tms_token}
+    )
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
     assert data["id"] == 15
@@ -91,11 +136,17 @@ def test_get_trixel_list():
     data = response.json()
     assert data[0] == 15
 
-    response = client.put("/trixel/141/sensor_count/ambient_temperature?sensor_count=1")
+    response = client.put(
+        "/trixel/141/sensor_count/ambient_temperature?sensor_count=1", headers={"token": pytest.tms_token}
+    )
     assert response.status_code == HTTPStatus.OK, response.text
-    response = client.put("/trixel/141/sensor_count/relative_humidity?sensor_count=1")
+    response = client.put(
+        "/trixel/141/sensor_count/relative_humidity?sensor_count=1", headers={"token": pytest.tms_token}
+    )
     assert response.status_code == HTTPStatus.OK, response.text
-    response = client.put("/trixel/8/sensor_count/ambient_temperature?sensor_count=1")
+    response = client.put(
+        "/trixel/8/sensor_count/ambient_temperature?sensor_count=1", headers={"token": pytest.tms_token}
+    )
     assert response.status_code == HTTPStatus.OK, response.text
 
     response = client.get("/trixel")
@@ -172,8 +223,10 @@ def test_get_sensor_count_invalid_id(id: int):
 
 
 @pytest.mark.order(100)
-@pytest.mark.parametrize("id", [4, 16, -1, 123])
-def test_update_trixel_invalid_id(id: int, empty_db):
-    """Test invalid trixel id for put/update trixel sensor count endpoint."""
-    response = client.put(f"/trixel/{id}/sensor_count/ambient_temperature?sensor_count=4")
+def test_get_tms_for_trixel_invalid(empty_db):
+    """Test responsible TMS retrieval on un-managed trixels."""
+    response = client.get("/trixel/35/TMS")
+    assert response.status_code == HTTPStatus.NOT_FOUND, response.text
+
+    response = client.get("/trixel/2/TMS")
     assert response.status_code == HTTPStatus.BAD_REQUEST, response.text
