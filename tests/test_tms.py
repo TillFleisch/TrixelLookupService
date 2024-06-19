@@ -87,6 +87,24 @@ def test_get_tms_detail():
     assert data["host"] == "sausage.dog"
 
 
+@pytest.mark.order(202)
+def test_get_delegations():
+    """Test global delegation list retrieval."""
+    response = client.get("/TMS/delegations")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert len(data) == 8
+
+
+@pytest.mark.order(202)
+def test_tms_delegation():
+    """Test tms specific delegation list retrieval."""
+    response = client.get("/TMS/1/delegations")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert len(data) == 8
+
+
 @pytest.mark.order(200)
 def test_get_tms_list_empty(empty_db):
     """Test list retrieval on empty db."""
@@ -100,4 +118,20 @@ def test_get_tms_list_empty(empty_db):
 def test_get_tms_detail_empty(empty_db):
     """Test detail retrieval on non-existent id / empty db."""
     response = client.get("/TMS/1")
+    assert response.status_code == HTTPStatus.NOT_FOUND, response.text
+
+
+@pytest.mark.order(200)
+def test_get_delegations_empty(empty_db):
+    """Test global delegation list on empty db."""
+    response = client.get("/TMS/delegations")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert len(data) == 0
+
+
+@pytest.mark.order(200)
+def test_get_tms_delegation_empty(empty_db):
+    """Test delegation retrieval on non-existent id / empty db."""
+    response = client.get("/TMS/1/delegations")
     assert response.status_code == HTTPStatus.NOT_FOUND, response.text

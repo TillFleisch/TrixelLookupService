@@ -2,9 +2,11 @@
 
 from secrets import token_bytes
 
-from sqlalchemy import update
+from pydantic import PositiveInt
+from pynyhtm import HTM
+from sqlalchemy import and_, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from database import except_columns
 
@@ -117,6 +119,11 @@ def update_tms(
 
     if active is not None:
         stmt = stmt.values(active=active)
+
+        # Remove all TMS delegations
+        if not active:
+            db.query().filter(model.TrixelManagementServer.id == id).delete()
+
     if host is not None:
         stmt = stmt.values(host=host)
 
@@ -128,3 +135,107 @@ def update_tms(
     db.commit()
 
     return db.query(*except_columns(model.TrixelManagementServer)).where(model.TrixelManagementServer.id == id).first()
+
+
+def insert_delegations(db: Session, tms_id: int, trixel_ids: list[int]) -> model.TMSDelegation:
+    """
+    Insert one or more trixel delegations into the database.
+
+    note:: This currently only implements insertions without conflict handling and trixel exclusion.
+
+    :param tms_id: id of the TMS in charge
+    :param trixel_ids: list of ids which are delegated
+    :returns: list of TMS delegations
+    :raises ValueError: if one of trixel ids is invalid
+    """
+    tms: model.TrixelManagementServer = (
+        db.query(*except_columns(model.TrixelManagementServer)).where(model.TrixelManagementServer.id == tms_id).first()
+    )
+    if not tms.active:
+        raise RuntimeError("Trixels cannot be delegated to deactivated TMS.")
+
+    delegations = list()
+    for trixel in trixel_ids:
+        try:
+            HTM.get_level(trixel)
+        except ValueError:
+            raise ValueError(f"Invalid trixel id: {trixel}")
+        tms_delegation = model.TMSDelegation(tms_id=tms.id, trixel_id=trixel)
+        db.add(tms_delegation)
+        delegations.append(tms_delegation)
+
+    db.commit()
+
+    for tms_delegation in delegations:
+        db.refresh(tms_delegation)
+    return delegations
+
+
+def get_all_delegations(
+    db: Session,
+    limit: PositiveInt = 100,
+    offset: int = 0,
+) -> list[model.TMSDelegation]:
+    """
+    Get a list of all delegations.
+
+    :param limit: search result limit
+    :param offset: skips the first n results
+    :returns: list of TMSDelegations
+    """
+    return (
+        db.query(model.TMSDelegation)
+        .join(
+            model.TrixelManagementServer,
+            and_(
+                model.TMSDelegation.tms_id == model.TrixelManagementServer.id,
+                model.TrixelManagementServer.active is True,
+            ),
+        )
+        .offset(offset=offset)
+        .limit(limit=limit)
+        .all()
+    )
+
+
+def get_tms_delegations(db: Session, tms_id: int) -> list[model.TMSDelegation]:
+    """
+    Get all delegations for a TMS including delegations from excluded trixels.
+
+    :param tms_id: id of the TMS for which delegations are determined
+    :returns: list of TMSDelegations
+    :raises ValueError: if the a tms with ID does not exists
+    """
+    if db.query(model.TMSDelegation).where(model.TMSDelegation.tms_id == tms_id).first() is None:
+        raise ValueError(f"TMS with ID {tms_id} does not exist.")
+
+    self = aliased(model.TMSDelegation)
+
+    res = (
+        db.query(model.TMSDelegation, self)
+        .where(and_(model.TMSDelegation.tms_id == tms_id))
+        .join(
+            model.TrixelManagementServer,
+            and_(
+                model.TMSDelegation.tms_id == model.TrixelManagementServer.id,
+                model.TrixelManagementServer.active is True,
+            ),
+        )
+        .join(
+            self,
+            and_(
+                model.TMSDelegation.trixel_id == self.trixel_id,
+                model.TMSDelegation.exclude is True,
+                self.exclude is False,
+            ),
+            isouter=True,
+        )
+        .all()
+    )
+
+    flat = list()
+    for r in res:
+        flat.append(r[0])
+        if r[1] is not None:
+            flat.append(r[1])
+    return flat

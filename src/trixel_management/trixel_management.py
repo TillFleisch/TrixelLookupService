@@ -23,7 +23,7 @@ router = APIRouter(prefix="/TMS", tags=[TAG_TMS])
 
 
 @router.get(
-    "/",
+    "",
     name="Get TMS IDs.",
     summary="Get a list of all registered trixel management server IDs.",
     tags=[TAG_TMS],
@@ -36,6 +36,21 @@ def get_tms_list(
 ) -> list[int]:
     """Get a list of all registered trixel management server IDs."""
     return crud.get_tms_list(db, active=active, limit=limit, offset=offset)
+
+
+@router.get(
+    "/delegations",
+    name="Get all delegations",
+    summary="Get a list of all delegations",
+    tags=[TAG_TMS],
+)
+def get_delegations(
+    limit: PositiveInt = Query(100, description="Limits the number of results."),
+    offset: PositiveInt = Query(0, description="Skip the first n results."),
+    db: Session = Depends(get_db),
+) -> list[schema.TMSDelegation]:
+    """Get a list of all delegations."""
+    return crud.get_all_delegations(db, offset=offset, limit=limit)
 
 
 @router.get(
@@ -58,7 +73,7 @@ def get_tms(
 
 
 @router.post(
-    "/",
+    "",
     name="Add TMS.",
     summary="Add a TMS to this TLS.",
     tags=[TAG_TMS],
@@ -98,8 +113,9 @@ def create_tms(
 
     result = crud.create_tms(db, host=host)
 
-    # TODO: ~activate by default~ and delegate roots (limited implementation)
-    crud.update_tms(db, id=result.id, active=True)
+    # TODO: replace fixed delegation and activation with dynamic trixel allocation and allow multiple TMS.
+    result = crud.update_tms(db, id=result.id, active=True)
+    crud.insert_delegations(db, tms_id=result.id, trixel_ids=[x for x in range(8, 16)])  # Delegate all root nodes
 
     return result
 
@@ -131,3 +147,23 @@ def update_tms(
         raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Invalid TMS authentication token!")
 
     return crud.update_tms(db, id=tms_id, host=host)
+
+
+@router.get(
+    "/{tms_id}/delegations",
+    name="Get all delegations for the provided TMS",
+    summary="Get all delegations for the provided TMS, including other TMSs which manage excluded trixels.",
+    tags=[TAG_TMS],
+    responses={
+        404: {"content": {"application/json": {"example": {"detail": "TMS with the given ID does not exist."}}}},
+    },
+)
+def get_tms_delegations(
+    tms_id: int = Path(description="ID of the desired TMS."),
+    db: Session = Depends(get_db),
+) -> list[schema.TMSDelegation]:
+    """Get the delegations and exceptions associated with this TMS."""
+    try:
+        return crud.get_tms_delegations(db, tms_id=tms_id)
+    except ValueError:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TMS with the given ID does not exist.")

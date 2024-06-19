@@ -28,3 +28,11 @@ class TrixelManagementServerCreate(TrixelManagementServerBase):
     def reveal_token(self, v):
         """Get a base64 encoded representation of the access token during json conversion."""
         return base64.b64encode(v.get_secret_value())
+
+
+class TMSDelegation(BaseModel):
+    """Schema which describes a TMS trixel delegation."""
+
+    tms_id: int
+    trixel_id: int
+    exclude: bool = False
