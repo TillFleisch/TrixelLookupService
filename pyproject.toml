@@ -13,7 +13,7 @@ dev = ["black", "isort", "pytest", "pytest-order", "requests_mock"]
 
 [project]
 name = "trixellookupserver"
-version = "0.0.0"
+version = "0.1.0"
 description = "Trixel-Lookup-Service (server) for maintaining Trixel-Management-Services."
 readme = "README.md"
 authors = [{ name = "Till", email = "till@fleisch.dev" }]
