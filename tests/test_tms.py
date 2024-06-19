@@ -105,6 +105,17 @@ def test_tms_delegation():
     assert len(data) == 8
 
 
+@pytest.mark.order(202)
+@pytest.mark.parametrize("id", [8, 35, 141, 55345234234])
+def test_get_tms_for_trixel(id: int):
+    """Test responsible TMS retrieval."""
+    response = client.get(f"/trixel/{id}/TMS")
+    assert response.status_code == HTTPStatus.OK, response.text
+    data = response.json()
+    assert data["id"] == 1
+    assert "token" not in data
+
+
 @pytest.mark.order(200)
 def test_get_tms_list_empty(empty_db):
     """Test list retrieval on empty db."""
@@ -135,3 +146,13 @@ def test_get_tms_delegation_empty(empty_db):
     """Test delegation retrieval on non-existent id / empty db."""
     response = client.get("/TMS/1/delegations")
     assert response.status_code == HTTPStatus.NOT_FOUND, response.text
+
+
+@pytest.mark.order(200)
+def test_get_tms_for_trixel_invalid():
+    """Test responsible TMS retrieval on un-managed trixels."""
+    response = client.get("/trixel/35/TMS")
+    assert response.status_code == HTTPStatus.NOT_FOUND, response.text
+
+    response = client.get("/trixel/2/TMS")
+    assert response.status_code == HTTPStatus.BAD_REQUEST, response.text

@@ -2,11 +2,12 @@
 
 from pydantic import PositiveInt
 from pynyhtm import HTM
-from sqlalchemy import and_, update
+from sqlalchemy import and_, desc, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import model
+from trixel_management.model import TMSDelegation, TrixelManagementServer
 
 
 def add_level_lookup(db: Session, lookup: dict[int, int]):
@@ -158,3 +159,41 @@ def get_trixel_ids(
 
     result = query.distinct().offset(offset=offset).limit(limit=limit).all()
     return [x[0] for x in result]
+
+
+def get_responsible_tms(db: Session, trixel_id: int) -> TrixelManagementServer | None:
+    """
+    Get the TMS responsible for the provided Trixel.
+
+    :param trixel_id: The trixel for which the TMS is determined.
+    :returns: responsible TrixelManagementServer or None if not present
+    :raises ValueError: if the provided trixel_id is invalid
+    """
+    try:
+        level = HTM.get_level(trixel_id)
+
+        # Generate comparison with all parent trixels
+        clauses = list()
+        for i in range(0, level + 1):
+            clauses.append(TMSDelegation.trixel_id == (trixel_id >> i * 2))
+
+        # Select TMS with the highest level which matches the trixel
+        query = (
+            db.query(TrixelManagementServer)
+            .join(
+                TMSDelegation,
+                and_(
+                    TrixelManagementServer.id == TMSDelegation.tms_id,
+                    TrixelManagementServer.active == 1,
+                    TMSDelegation.exclude == 0,
+                ),
+            )
+            .where(or_(*clauses))
+            .join(model.LevelLookup, model.LevelLookup.trixel_id == TMSDelegation.trixel_id)
+            .order_by(desc(model.LevelLookup.level))
+        )
+
+        return query.first()
+
+    except ValueError:
+        raise ValueError(f"Invalid trixel id: {trixel_id}")

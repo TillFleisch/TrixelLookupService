@@ -15,6 +15,7 @@ import model
 import schema
 from database import engine, get_db
 from schema import Ping, Version
+from trixel_management.schema import TrixelManagementServer
 from trixel_management.trixel_management import TAG_TMS
 from trixel_management.trixel_management import router as trixel_management_router
 
@@ -167,7 +168,33 @@ def update_trixel_sensor_count(
     # TODO: requires auth (only allowed from any TMS, or possibly the one who manages the trixel)
     # could restrict to only allowed by managing tms (expensive lookup required? caching?)
     try:
+
         return crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
+    except ValueError:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
+
+
+@app.get(
+    "/trixel/{trixel_id}/TMS",
+    name="Get TMS which manages the trixel.",
+    summary="Get the TMS responsible for a specific trixel.",
+    tags=[TAG_TRIXEL_INFO],
+    responses={
+        400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
+        404: {"content": {"application/json": {"example": {"detail": "No responsible TMS found!"}}}},
+    },
+)
+def get_responsible_tms(
+    trixel_id: int = Path(description="The Trixel id for which the TMS is determined."),
+    db: Session = Depends(get_db),
+) -> TrixelManagementServer:
+    """Get the TMS responsible for a Trixel."""
+    try:
+        if (result := crud.get_responsible_tms(db, trixel_id=trixel_id)) is not None:
+            return result
+        else:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No responsible TMS found!")
+
     except ValueError:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
 
