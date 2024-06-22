@@ -3,7 +3,6 @@
 from pydantic import PositiveInt
 from pynyhtm import HTM
 from sqlalchemy import and_, desc, or_, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import model
@@ -13,15 +12,20 @@ from trixel_management.model import TMSDelegation, TrixelManagementServer
 def add_level_lookup(db: Session, lookup: dict[int, int]):
     """Insert an entry within the level lookup table.
 
+    Adds all non-existent entries. Does not commit changes.
+
     :param lookup: dict containing the level for each trixel
     :param level: level at which the trixel is located
     """
-    for trixel_id, level in lookup.items():
-        try:
-            db.add(model.LevelLookup(trixel_id=trixel_id, level=level))
-            db.commit()
-        except IntegrityError:
-            db.rollback()
+    clauses = list()
+    for trixel_id in lookup.keys():
+        clauses.append(model.LevelLookup.trixel_id == trixel_id)
+
+    existing_trixels = db.query(model.LevelLookup.trixel_id).where(or_(*clauses)).all()
+
+    new_trixels = lookup.keys() - set([x[0] for x in existing_trixels])
+    for trixel_id in new_trixels:
+        db.add(model.LevelLookup(trixel_id=trixel_id, level=lookup[trixel_id]))
 
 
 def create_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType, sensor_count: int) -> model.TrixelMap:
@@ -39,9 +43,9 @@ def create_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType,
 
         trixel = model.TrixelMap(id=trixel_id, type_=type_, sensor_count=sensor_count)
         db.add(trixel)
+        add_level_lookup(db, {trixel_id: level})
         db.commit()
 
-        add_level_lookup(db, {trixel_id: level})
         return trixel
 
     except ValueError:
@@ -184,8 +188,8 @@ def get_responsible_tms(db: Session, trixel_id: int) -> TrixelManagementServer |
                 TMSDelegation,
                 and_(
                     TrixelManagementServer.id == TMSDelegation.tms_id,
-                    TrixelManagementServer.active == 1,
-                    TMSDelegation.exclude == 0,
+                    TrixelManagementServer.active == True,  # noqa: E712
+                    TMSDelegation.exclude == False,  # noqa: E712
                 ),
             )
             .where(or_(*clauses))

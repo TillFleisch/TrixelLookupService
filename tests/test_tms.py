@@ -21,8 +21,8 @@ def test_post_and_update_TMS():
     """Test insertion and update of TMS with valid authentication token."""
     token = None
     with requests_mock.Mocker() as m:
-        host = "bread.crumbs"
-        m.get("https://bread.crumbs/ping", text='{"ping":"pong"}')
+        host = "bread.crumbs.local"
+        m.get("https://bread.crumbs.local/ping", text='{"ping":"pong"}')
         response = client.post(f"/TMS/?{urllib.parse.urlencode({'host':host})}")
         assert response.status_code == HTTPStatus.OK, response.text
         data = response.json()
@@ -32,14 +32,14 @@ def test_post_and_update_TMS():
         assert data["host"] == host
 
     # Update host information
-    new_host = "sausage.dog"
+    new_host = "sausage.dog.local"
     response = client.put(f"/TMS/{data['id']}/?{urllib.parse.urlencode({'host':new_host})}", headers={"token": token})
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
     assert data["host"] == new_host
 
     # Update host for other TMS
-    new_host = "sausage.dog"
+    new_host = "sausage.dog.local"
     response = client.put(f"/TMS/35/?{urllib.parse.urlencode({'host':new_host})}", headers={"token": token})
     assert response.status_code == HTTPStatus.FORBIDDEN, response.text
 
@@ -47,7 +47,7 @@ def test_post_and_update_TMS():
 @pytest.mark.order(202)
 def test_post_invalid_token():
     """Test updating TMS details with invalid token."""
-    new_host = "portal.gun"
+    new_host = "portal.gun.local"
     response = client.put(f"/TMS/1/?{urllib.parse.urlencode({'host':new_host})}", headers={"token": "fake-token"})
     assert response.status_code == HTTPStatus.UNAUTHORIZED, response.text
 
@@ -56,8 +56,8 @@ def test_post_invalid_token():
 def test_put_tms_max_exceeded():
     """Test adding TMS past the max limitation."""
     with requests_mock.Mocker() as m:
-        host = "toaster.oven"
-        m.get("https://toaster.oven/ping", text='{"ping":"pong"}')
+        host = "toaster.oven.local"
+        m.get("https://toaster.oven.local/ping", text='{"ping":"pong"}')
         response = client.post(f"/TMS/?{urllib.parse.urlencode({'host':host})}")
         assert response.status_code == HTTPStatus.CONFLICT, response.text
 
@@ -84,7 +84,7 @@ def test_get_tms_detail():
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
     assert data["id"] == 1
-    assert data["host"] == "sausage.dog"
+    assert data["host"] == "sausage.dog.local"
 
 
 @pytest.mark.order(202)

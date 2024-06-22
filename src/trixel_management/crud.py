@@ -167,9 +167,9 @@ def insert_delegations(db: Session, tms_id: int, trixel_ids: list[int]) -> model
         delegations.append(tms_delegation)
         level_lookup[trixel] = level
 
+    add_level_lookup(db, level_lookup)
     db.commit()
 
-    add_level_lookup(db, level_lookup)
     for tms_delegation in delegations:
         db.refresh(tms_delegation)
     return delegations
@@ -193,7 +193,7 @@ def get_all_delegations(
             model.TrixelManagementServer,
             and_(
                 model.TMSDelegation.tms_id == model.TrixelManagementServer.id,
-                model.TrixelManagementServer.active == 1,
+                model.TrixelManagementServer.active == True,  # noqa: E712
             ),
         )
         .offset(offset=offset)
@@ -210,7 +210,7 @@ def get_tms_delegations(db: Session, tms_id: int) -> list[model.TMSDelegation]:
     :returns: list of TMSDelegations
     :raises ValueError: if the a tms with ID does not exists
     """
-    if db.query(model.TMSDelegation).where(model.TMSDelegation.tms_id == tms_id).first() is None:
+    if db.query(model.TrixelManagementServer.id).where(model.TrixelManagementServer.id == tms_id).first() is None:
         raise ValueError(f"TMS with ID {tms_id} does not exist.")
 
     self = aliased(model.TMSDelegation)
@@ -222,15 +222,15 @@ def get_tms_delegations(db: Session, tms_id: int) -> list[model.TMSDelegation]:
             model.TrixelManagementServer,
             and_(
                 model.TMSDelegation.tms_id == model.TrixelManagementServer.id,
-                model.TrixelManagementServer.active == 1,
+                model.TrixelManagementServer.active == True,  # noqa: E712
             ),
         )
         .join(
             self,
             and_(
                 model.TMSDelegation.trixel_id == self.trixel_id,
-                model.TMSDelegation.exclude == 1,
-                self.exclude == 0,
+                model.TMSDelegation.exclude == True,  # noqa: E712
+                self.exclude == False,  # noqa: E712
             ),
             isouter=True,
         )
