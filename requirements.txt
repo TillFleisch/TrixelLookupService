@@ -4,3 +4,4 @@ packaging~=24.1
 SQLAlchemy~=2.0
 pynyhtm==0.1.0
 requests~=2.32
+colorlog~=6.8

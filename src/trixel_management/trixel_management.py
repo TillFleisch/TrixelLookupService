@@ -8,18 +8,45 @@ from http import HTTPStatus
 import requests
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query
 from pydantic import PositiveInt
+from requests.exceptions import SSLError
 from sqlalchemy.orm import Session
 
 from database import get_db
+from logging_helper import get_logger
 
 from . import crud, schema
 
 TAG_TMS = "Trixel Management Servers"
 ACTIVE_TMS_LIMIT = 1
 
+logger = get_logger(__name__)
 allow_insecure_tms = os.getenv("TLS_ALLOW_INSECURE_TMS", "False").lower() in ("1", "true")
 
 router = APIRouter(prefix="/TMS", tags=[TAG_TMS])
+
+
+def api_ping_verification(host: str):
+    """
+    Verify that the API at the given address responds to pings.
+
+    :param host: The address where the TMS is located
+    :raises HTTPException: if the host does not respond with a successful ping
+    """
+    try:
+        # TODO: perform ping asynchronously
+        logger.debug("Pinging TMS")
+        request = requests.get(f"http{'' if allow_insecure_tms  else 's'}://{host}/ping")
+        if not (request.status_code == 200 and request.text == '{"ping":"pong"}'):
+            del request
+            raise Exception()
+        del request
+    except SSLError:
+        logger.error("TMS Ping unsuccessful (SSL)!")
+        raise HTTPException(HTTPStatus.BAD_REQUEST, detail="TMS ping SSL-Error!")
+    except Exception:
+        logger.error("TMS Ping unsuccessful!")
+        raise HTTPException(HTTPStatus.BAD_REQUEST, detail="TMS ping unsuccessful!")
+    logger.debug("Ping succeeded!")
 
 
 @router.get(
@@ -96,27 +123,21 @@ def create_tms(
     Returns TMS details including the authentication token. Store this token properly, it is only sent once.
     Requires a valid response from the TMS when requesting the /ping endpoint.
     """
+    logger.debug("Adding new TMS")
     if len(crud.get_tms_list(db, active=True)) >= ACTIVE_TMS_LIMIT:
+        logger.error("Maximum number of Trixel Management Server reached!")
         raise HTTPException(
             status_code=HTTPStatus.CONFLICT, detail="Maximum number of Trixel Management Servers reached!"
         )
 
-    # Verify that the provided TMS is responding
-    try:
-        request = requests.get(f"http{'' if allow_insecure_tms  else 's'}://{host}/ping")
-        if not (request.status_code == 200 and request.text == '{"ping":"pong"}'):
-            del request
-            raise Exception()
-        del request
-    except Exception:
-        raise HTTPException(HTTPStatus.BAD_REQUEST, detail="TMS ping unsuccessful!")
-
+    api_ping_verification(host)
     result = crud.create_tms(db, host=host)
 
     # TODO: replace fixed delegation and activation with dynamic trixel allocation and allow multiple TMS.
     result = crud.update_tms(db, id=result.id, active=True)
     crud.insert_delegations(db, tms_id=result.id, trixel_ids=[x for x in range(8, 16)])  # Delegate all root nodes
 
+    logger.debug("Added new TMS with auto-delegations.")
     return result
 
 
@@ -128,6 +149,7 @@ def create_tms(
     responses={
         403: {"content": {"application/json": {"example": {"detail": "Can only modify own TMS properties."}}}},
         401: {"content": {"application/json": {"example": {"detail": "Invalid TMS authentication token!"}}}},
+        400: {"content": {"application/json": {"example": {"detail": "TMS ping unsuccessful!"}}}},
     },
 )
 def update_tms(
@@ -146,6 +168,8 @@ def update_tms(
     except (binascii.Error, PermissionError):
         raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Invalid TMS authentication token!")
 
+    logger.debug("Updating TMS information")
+    api_ping_verification(host)
     return crud.update_tms(db, id=tms_id, host=host)
 
 

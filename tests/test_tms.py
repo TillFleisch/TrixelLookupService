@@ -31,12 +31,17 @@ def test_post_and_update_TMS():
         assert isinstance(data["id"], int)
         assert data["host"] == host
 
-    # Update host information
-    new_host = "sausage.dog.local"
-    response = client.put(f"/TMS/{data['id']}/?{urllib.parse.urlencode({'host':new_host})}", headers={"token": token})
-    assert response.status_code == HTTPStatus.OK, response.text
-    data = response.json()
-    assert data["host"] == new_host
+    with requests_mock.Mocker() as m:
+        new_host = "sausage.dog.local"
+        m.get("https://sausage.dog.local/ping", text='{"ping":"pong"}')
+
+        # Update host information
+        response = client.put(
+            f"/TMS/{data['id']}/?{urllib.parse.urlencode({'host':new_host})}", headers={"token": token}
+        )
+        assert response.status_code == HTTPStatus.OK, response.text
+        data = response.json()
+        assert data["host"] == new_host
 
     # Update host for other TMS
     new_host = "sausage.dog.local"

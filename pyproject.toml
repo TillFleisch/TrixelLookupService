@@ -25,7 +25,8 @@ dependencies = [
     'packaging',
     'SQLAlchemy',
     'pynyhtm',
-    'requests'
+    'requests',
+    'colorlog',
 ]
 
 [project.urls]
