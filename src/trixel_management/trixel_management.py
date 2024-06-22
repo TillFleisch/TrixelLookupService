@@ -1,10 +1,10 @@
 """Endpoints related to Trixel Management servers."""
 
-import base64
-import binascii
 import os
+from datetime import datetime, timezone
 from http import HTTPStatus
 
+import jwt
 import requests
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query
 from pydantic import PositiveInt
@@ -47,6 +47,23 @@ def api_ping_verification(host: str):
         logger.error("TMS Ping unsuccessful!")
         raise HTTPException(HTTPStatus.BAD_REQUEST, detail="TMS ping unsuccessful!")
     logger.debug("Ping succeeded!")
+
+
+def verify_tms_token(
+    token: str = Header(description="TMS authentication token."),
+    db: Session = Depends(get_db),
+) -> int:
+    """
+    Dependency which adds the token header attribute for TMS authentication and performs validation.
+
+    :returns: TMS ID of the valid token
+    :raises PermissionError: if the provided token is invalid
+    """
+    try:
+        tms_id = crud.verify_tms_token(db, jwt_token=token)
+        return tms_id
+    except PermissionError:
+        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Invalid TMS authentication token!")
 
 
 @router.get(
@@ -134,11 +151,18 @@ def create_tms(
     result = crud.create_tms(db, host=host)
 
     # TODO: replace fixed delegation and activation with dynamic trixel allocation and allow multiple TMS.
-    result = crud.update_tms(db, id=result.id, active=True)
-    crud.insert_delegations(db, tms_id=result.id, trixel_ids=[x for x in range(8, 16)])  # Delegate all root nodes
+    update_result = crud.update_tms(db, id=result.id, active=True)
+    crud.insert_delegations(
+        db, tms_id=update_result.id, trixel_ids=[x for x in range(8, 16)]
+    )  # Delegate all root nodes
+
+    payload = {"iat": datetime.now(tz=timezone.utc), "tms_id": result.id}
+    jwt_token = jwt.encode(payload, result.token_secret, algorithm="HS256")
 
     logger.debug("Added new TMS with auto-delegations.")
-    return result
+    return schema.TrixelManagementServerCreate(
+        id=update_result.id, active=update_result.active, host=update_result.host, token=jwt_token
+    )
 
 
 @router.put(
@@ -154,19 +178,13 @@ def create_tms(
 )
 def update_tms(
     host: str = Query(description="New address under which the TMS is available."),
-    token: str = Header(description="TMS authentication token."),
     tms_id: int = Path(description="TMS to which changes apply."),
+    token_tms_id: int = Depends(verify_tms_token),
     db: Session = Depends(get_db),
 ) -> schema.TrixelManagementServer:
     """Update the details of the provided TMS."""
-    try:
-        id = crud.verify_tms_token(db, token=base64.b64decode(token))
-
-        if id != tms_id:
-            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only modify own TMS properties.")
-
-    except (binascii.Error, PermissionError):
-        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Invalid TMS authentication token!")
+    if token_tms_id != tms_id:
+        raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only modify own TMS properties.")
 
     logger.debug("Updating TMS information")
     api_ping_verification(host)

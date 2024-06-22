@@ -5,3 +5,4 @@ SQLAlchemy~=2.0
 pynyhtm==0.1.0
 requests~=2.32
 colorlog~=6.8
+PyJWT~=2.8

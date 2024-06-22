@@ -27,6 +27,7 @@ dependencies = [
     'pynyhtm',
     'requests',
     'colorlog',
+    'PyJWT',
 ]
 
 [project.urls]

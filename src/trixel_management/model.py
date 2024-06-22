@@ -20,8 +20,8 @@ class TrixelManagementServer(Base):
     __tablename__ = "TrixelManagementServer"
 
     id = Column(Integer, primary_key=True, unique=True, autoincrement=True, nullable=False)
-    host = Column(String(255))
-    token = Column(LargeBinary(32))  # TODO: uniqueness should be enforced if the token is used for identification
+    host = Column(String(256))
+    token_secret = Column(LargeBinary(256))
     active = Column(Boolean, default=False, nullable=False)
 
     delegations = relationship("TMSDelegation", back_populates="tms")
