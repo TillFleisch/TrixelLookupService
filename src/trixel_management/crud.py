@@ -99,9 +99,9 @@ def verify_tms_token(db: Session, jwt_token: bytes):
         if (
             token_secret := db.query(model.TrixelManagementServer.token_secret)
             .where(model.TrixelManagementServer.id == unverified_payload["tms_id"])
-            .first()[0]
+            .first()
         ):
-            payload = jwt.decode(jwt_token, token_secret, algorithms=["HS256"])
+            payload = jwt.decode(jwt_token, token_secret[0], algorithms=["HS256"])
             return payload["tms_id"]
     except jwt.PyJWTError:
         raise PermissionError("Invalid TMS authentication token.")
@@ -144,7 +144,7 @@ def update_tms(
     return (
         db.query(*except_columns(model.TrixelManagementServer, "token_secret"))
         .where(model.TrixelManagementServer.id == id)
-        .first()
+        .one()
     )
 
 
@@ -164,6 +164,10 @@ def insert_delegations(db: Session, tms_id: int, trixel_ids: list[int]) -> model
         .where(model.TrixelManagementServer.id == tms_id)
         .first()
     )
+
+    if tms is None:
+        raise RuntimeError(f"TMS with id {tms_id} does not exist!")
+
     if not tms.active:
         raise RuntimeError("Trixels cannot be delegated to deactivated TMS.")
 

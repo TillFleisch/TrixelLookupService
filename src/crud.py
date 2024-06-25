@@ -9,6 +9,27 @@ import model
 from trixel_management.model import TMSDelegation, TrixelManagementServer
 
 
+def init_measurement_type_enum(db: Session):
+    """Initialize the measurement type reference enum table within the DB."""
+    existing_types: model.MeasurementType = db.query(model.MeasurementType).all()
+    existing_types: set[int, str] = set([(x.id, x.name) for x in existing_types])
+
+    enum_types: set[int, str] = set()
+    for type_ in model.MeasurementTypeEnum:
+        enum_types.add((type_.get_id(), type_.value))
+
+    # Assert the local python enum is the same as the one used in the DB
+    # Thus, the local enum can be used as a shortcut without retrieving from the enum relation
+    if len(existing_types - enum_types) > 0:
+        raise (RuntimeError("DB contains unsupported enums!"))
+
+    new_types = enum_types - existing_types
+    if len(new_types) > 0:
+        for new_type in new_types:
+            db.add(model.MeasurementType(id=new_type[0], name=new_type[1]))
+        db.commit()
+
+
 def add_level_lookup(db: Session, lookup: dict[int, int]):
     """Insert an entry within the level lookup table.
 
@@ -28,7 +49,9 @@ def add_level_lookup(db: Session, lookup: dict[int, int]):
         db.add(model.LevelLookup(trixel_id=trixel_id, level=lookup[trixel_id]))
 
 
-def create_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType, sensor_count: int) -> model.TrixelMap:
+def create_trixel_map(
+    db: Session, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
+) -> model.TrixelMap:
     """
     Create an entry in the trixel map for a given trixel id and measurement type.
 
@@ -41,7 +64,11 @@ def create_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType,
     try:
         level = HTM.get_level(trixel_id)
 
-        trixel = model.TrixelMap(id=trixel_id, type_=type_, sensor_count=sensor_count)
+        type_id: model.MeasurementType = (
+            db.query(model.MeasurementType.id).where(model.MeasurementType.name == type_.value).one()
+        )
+
+        trixel = model.TrixelMap(id=trixel_id, type_id=type_id[0], sensor_count=sensor_count)
         db.add(trixel)
         add_level_lookup(db, {trixel_id: level})
         db.commit()
@@ -53,7 +80,7 @@ def create_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType,
 
 
 def update_trixel_map(
-    db: Session, trixel_id: int, type_: model.MeasurementType, sensor_count: int
+    db: Session, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
 ) -> model.TrixelMap | None:
     """
     Update an entry within the trixel map for a given trixel id and measurement type.
@@ -66,7 +93,7 @@ def update_trixel_map(
     stmt = (
         update(model.TrixelMap)
         .where(model.TrixelMap.id == trixel_id)
-        .where(model.TrixelMap.type_ == type_)
+        .where(and_(model.TrixelMap.type_id == model.MeasurementType.id, model.MeasurementType.name == type_.value))
         .values(sensor_count=sensor_count)
     )
 
@@ -77,10 +104,17 @@ def update_trixel_map(
 
     db.commit()
 
-    return model.TrixelMap(id=trixel_id, type_=type_, sensor_count=sensor_count)
+    return (
+        db.query(model.TrixelMap)
+        .where(model.TrixelMap.id == trixel_id)
+        .where(and_(model.TrixelMap.type_id == model.MeasurementType.id, model.MeasurementType.name == type_.value))
+        .one()
+    )
 
 
-def upsert_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType, sensor_count: int) -> model.TrixelMap:
+def upsert_trixel_map(
+    db: Session, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
+) -> model.TrixelMap:
     """
     Update or insert into the trixel map if not present.
 
@@ -96,7 +130,7 @@ def upsert_trixel_map(db: Session, trixel_id: int, type_: model.MeasurementType,
 
 
 def get_trixel_map(
-    db: Session, trixel_id: int, types: list[model.MeasurementType] | None = None
+    db: Session, trixel_id: int, types: list[model.MeasurementTypeEnum] | None = None
 ) -> list[model.TrixelMap]:
     """
     Get the number of sensors per type for a trixel from the DB.
@@ -111,14 +145,15 @@ def get_trixel_map(
     except Exception:
         raise ValueError(f"Invalid trixel id: {trixel_id}")
 
-    types = types if types is not None else [enum.value for enum in model.MeasurementType]
+    types = [type.value for type in types] if types is not None else [enum.value for enum in model.MeasurementTypeEnum]
 
     return (
         db.query(model.TrixelMap)
         .where(
             and_(
                 model.TrixelMap.id == trixel_id,
-                model.TrixelMap.type_.in_(types),
+                model.TrixelMap.type_id == model.MeasurementType.id,
+                model.MeasurementType.name.in_(types),
                 model.TrixelMap.sensor_count > 0,
             )
         )
@@ -129,7 +164,7 @@ def get_trixel_map(
 def get_trixel_ids(
     db: Session,
     trixel_id: int | None = None,
-    types: list[model.MeasurementType] | None = None,
+    types: list[model.MeasurementTypeEnum] | None = None,
     limit: PositiveInt = 100,
     offset: int = 0,
 ) -> list[int]:
@@ -142,12 +177,12 @@ def get_trixel_ids(
     :returns: list of trixel_ids
     :raises ValueError: if the trixel id is invalid
     """
-    types = types if types is not None else [enum.value for enum in model.MeasurementType]
+    types = [type.value for type in types] if types is not None else [enum.value for enum in model.MeasurementTypeEnum]
 
     query = (
         db.query(model.TrixelMap.id, model.LevelLookup)
         .where(and_(model.TrixelMap.id == model.LevelLookup.trixel_id, model.TrixelMap.sensor_count > 0))
-        .where(model.TrixelMap.type_.in_(types))
+        .where(and_(model.TrixelMap.type_id == model.MeasurementType.id, model.MeasurementType.name.in_(types)))
     )
 
     if trixel_id is not None:

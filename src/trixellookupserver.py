@@ -1,6 +1,7 @@
 """Entry point for the Trixel Lookup Service API."""
 
 import importlib
+from contextlib import asynccontextmanager
 from http import HTTPStatus
 from typing import Annotated, List
 
@@ -31,6 +32,14 @@ api_version = importlib.metadata.version("trixellookupserver")
 
 model.Base.metadata.create_all(bind=engine)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan actions executed before and after FastAPI."""
+    crud.init_measurement_type_enum(next(get_db()))
+    yield
+
+
 app = FastAPI(
     title="Trixel Lookup Service",
     summary="""Manages Trixel Managements Servers (TMS) and their Trixel ID responsibilities.
@@ -38,6 +47,7 @@ app = FastAPI(
     version=api_version,
     root_path=f"/v{packaging.version.Version(api_version).major}",
     openapi_tags=openapi_tags,
+    lifespan=lifespan,
 )
 app.include_router(trixel_management_router)
 
@@ -73,7 +83,7 @@ def get_semantic_version() -> Version:
 )
 def get_trixel_list(
     types: Annotated[
-        List[model.MeasurementType],
+        List[model.MeasurementTypeEnum],
         Query(
             description="List of measurement types which restrict results. If none are provided, all types are used."
         ),
@@ -101,7 +111,7 @@ def get_trixel_list(
 def get_sub_trixel_list(
     trixel_id: int = Path(description="Root trixel which makes up the search space for sub-trixels."),
     types: Annotated[
-        List[model.MeasurementType],
+        List[model.MeasurementTypeEnum],
         Query(
             description="List of measurement types which restrict results. If none are provided, all types are used."
         ),
@@ -129,7 +139,7 @@ def get_sub_trixel_list(
 def get_trixel_info(
     trixel_id: int = Path(description="The id of the trixel for which the sensor count is to be determined."),
     types: Annotated[
-        List[model.MeasurementType],
+        List[model.MeasurementTypeEnum],
         Query(
             description="List of measurement types which restrict results. If none are provided, all types are used."
         ),
@@ -142,7 +152,7 @@ def get_trixel_info(
 
         sensor_counts = dict()
         for trixel_map in results or []:
-            sensor_counts[trixel_map.type_] = trixel_map.sensor_count
+            sensor_counts[model.MeasurementTypeEnum.get_from_id(trixel_map.type_id)] = trixel_map.sensor_count
 
         return schema.TrixelMap(id=trixel_id, sensor_counts=sensor_counts)
 
@@ -163,17 +173,21 @@ def get_trixel_info(
 )
 def update_trixel_sensor_count(
     trixel_id: int = Path(description="The Trixel id for which the sensor count is updated."),
-    type: model.MeasurementType = Path(description="Type of measurement for which the sensor count is updated."),
+    type: model.MeasurementTypeEnum = Path(description="Type of measurement for which the sensor count is updated."),
     sensor_count: int = Query(description="The new number of sensors for the given type within the trixel."),
     token_tms_id: int = Depends(verify_tms_token),
     db: Session = Depends(get_db),
 ) -> schema.TrixelMapUpdate:
     """Update (or insert new) trixel sensor count within the DB."""
     try:
-        if crud.get_responsible_tms(db, trixel_id=trixel_id).id != token_tms_id:
+        owner = crud.get_responsible_tms(db, trixel_id=trixel_id)
+        if owner is None or owner.id != token_tms_id:
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only modify own TMS properties.")
 
-        return crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
+        result = crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
+        return schema.TrixelMapUpdate(
+            id=result.id, sensor_count=result.sensor_count, type_=model.MeasurementTypeEnum.get_from_id(result.type_id)
+        )
     except ValueError:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
 

@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from crud import init_measurement_type_enum
 from database import Base
 from trixellookupserver import app, get_db
 
@@ -34,6 +35,7 @@ def prepare_db():
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    init_measurement_type_enum(next(override_get_db()))
 
 
 @pytest.fixture(scope="function")

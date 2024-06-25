@@ -230,3 +230,10 @@ def test_get_tms_for_trixel_invalid(empty_db):
 
     response = client.get("/trixel/2/TMS")
     assert response.status_code == HTTPStatus.BAD_REQUEST, response.text
+
+
+@pytest.mark.order(100)
+def test_get_trixel_invalid_type(empty_db):
+    """Tets invalid type for sensor count requests."""
+    response = client.get("/trixel/15/sensor_count?types=blinker_fluid")
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, response.text

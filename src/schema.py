@@ -1,8 +1,8 @@
 """Collection of global pydantic schemata."""
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
-from model import MeasurementType
+from model import MeasurementTypeEnum
 
 
 class Ping(BaseModel):
@@ -26,13 +26,11 @@ class TrixelMapBase(BaseModel):
 class TrixelMap(TrixelMapBase):
     """Schema for reading from the trixel map."""
 
-    model_config = ConfigDict(from_attributes=True)
-
-    sensor_counts: dict[MeasurementType, int]
+    sensor_counts: dict[MeasurementTypeEnum, int]
 
 
 class TrixelMapUpdate(TrixelMapBase):
     """Schema for updating the sensor count for a measurement type in a trixel."""
 
-    type_: MeasurementType
+    type_: MeasurementTypeEnum
     sensor_count: int
