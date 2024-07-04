@@ -9,7 +9,7 @@ import packaging.version
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Path, Query
 from pydantic import PositiveInt
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import crud
 import model
@@ -30,13 +30,15 @@ openapi_tags = [
 
 api_version = importlib.metadata.version("trixellookupserver")
 
-model.Base.metadata.create_all(bind=engine)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan actions executed before and after FastAPI."""
-    crud.init_measurement_type_enum(next(get_db()))
+    async with engine.begin() as conn:
+        await conn.run_sync(model.Base.metadata.create_all)
+    async for db in get_db():
+        await crud.init_measurement_type_enum(db)
+
     yield
 
 
@@ -81,7 +83,7 @@ def get_semantic_version() -> Version:
         400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
     },
 )
-def get_trixel_list(
+async def get_trixel_list(
     types: Annotated[
         List[model.MeasurementTypeEnum],
         Query(
@@ -90,11 +92,11 @@ def get_trixel_list(
     ] = None,
     limit: PositiveInt = Query(100, description="Limits the number of results."),
     offset: PositiveInt = Query(0, description="Skip the first n results."),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> list[int]:
     """Get a list of trixel ids with at least one sensor (filtered by measurement type)."""
     try:
-        return crud.get_trixel_ids(db, types=types, limit=limit, offset=offset)
+        return await crud.get_trixel_ids(db, types=types, limit=limit, offset=offset)
     except ValueError:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
 
@@ -108,7 +110,7 @@ def get_trixel_list(
         400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
     },
 )
-def get_sub_trixel_list(
+async def get_sub_trixel_list(
     trixel_id: int = Path(description="Root trixel which makes up the search space for sub-trixels."),
     types: Annotated[
         List[model.MeasurementTypeEnum],
@@ -118,11 +120,11 @@ def get_sub_trixel_list(
     ] = None,
     limit: PositiveInt = Query(100, description="Limits the number of results."),
     offset: PositiveInt = Query(0, description="Skip the first n results."),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> list[int]:
     """Get a list of sub-trixel ids with at least one sensor (filtered by measurement type)."""
     try:
-        return crud.get_trixel_ids(db, trixel_id=trixel_id, types=types, limit=limit, offset=offset)
+        return await crud.get_trixel_ids(db, trixel_id=trixel_id, types=types, limit=limit, offset=offset)
     except ValueError:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
 
@@ -136,7 +138,7 @@ def get_sub_trixel_list(
         400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
     },
 )
-def get_trixel_info(
+async def get_trixel_info(
     trixel_id: int = Path(description="The id of the trixel for which the sensor count is to be determined."),
     types: Annotated[
         List[model.MeasurementTypeEnum],
@@ -144,11 +146,11 @@ def get_trixel_info(
             description="List of measurement types which restrict results. If none are provided, all types are used."
         ),
     ] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> schema.TrixelMap:
     """Get the sensor count for a trixel for different measurement types."""
     try:
-        results = crud.get_trixel_map(db, trixel_id, types)
+        results = await crud.get_trixel_map(db, trixel_id, types)
 
         sensor_counts = dict()
         for trixel_map in results or []:
@@ -171,20 +173,20 @@ def get_trixel_info(
         401: {"content": {"application/json": {"example": {"detail": "Invalid TMS authentication token!"}}}},
     },
 )
-def update_trixel_sensor_count(
+async def update_trixel_sensor_count(
     trixel_id: int = Path(description="The Trixel id for which the sensor count is updated."),
     type: model.MeasurementTypeEnum = Path(description="Type of measurement for which the sensor count is updated."),
     sensor_count: int = Query(description="The new number of sensors for the given type within the trixel."),
     token_tms_id: int = Depends(verify_tms_token),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> schema.TrixelMapUpdate:
     """Update (or insert new) trixel sensor count within the DB."""
     try:
-        owner = crud.get_responsible_tms(db, trixel_id=trixel_id)
+        owner = await crud.get_responsible_tms(db, trixel_id=trixel_id)
         if owner is None or owner.id != token_tms_id:
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only modify own TMS properties.")
 
-        result = crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
+        result = await crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
         return schema.TrixelMapUpdate(
             id=result.id, sensor_count=result.sensor_count, type_=model.MeasurementTypeEnum.get_from_id(result.type_id)
         )
@@ -202,13 +204,13 @@ def update_trixel_sensor_count(
         404: {"content": {"application/json": {"example": {"detail": "No responsible TMS found!"}}}},
     },
 )
-def get_responsible_tms(
+async def get_responsible_tms(
     trixel_id: int = Path(description="The Trixel id for which the TMS is determined."),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TrixelManagementServer:
     """Get the TMS responsible for a Trixel."""
     try:
-        if (result := crud.get_responsible_tms(db, trixel_id=trixel_id)) is not None:
+        if (result := await crud.get_responsible_tms(db, trixel_id=trixel_id)) is not None:
             return result
         else:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No responsible TMS found!")

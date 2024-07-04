@@ -2,16 +2,17 @@
 
 from pydantic import PositiveInt
 from pynyhtm import HTM
-from sqlalchemy import and_, desc, or_, update
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, desc, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import model
 from trixel_management.model import TMSDelegation, TrixelManagementServer
 
 
-def init_measurement_type_enum(db: Session):
+async def init_measurement_type_enum(db: AsyncSession):
     """Initialize the measurement type reference enum table within the DB."""
-    existing_types: model.MeasurementType = db.query(model.MeasurementType).all()
+    query = select(model.MeasurementType)
+    existing_types: model.MeasurementType = (await db.execute(query)).scalars().all()
     existing_types: set[int, str] = set([(x.id, x.name) for x in existing_types])
 
     enum_types: set[int, str] = set()
@@ -27,10 +28,10 @@ def init_measurement_type_enum(db: Session):
     if len(new_types) > 0:
         for new_type in new_types:
             db.add(model.MeasurementType(id=new_type[0], name=new_type[1]))
-        db.commit()
+        await db.commit()
 
 
-def add_level_lookup(db: Session, lookup: dict[int, int]):
+async def add_level_lookup(db: AsyncSession, lookup: dict[int, int]):
     """Insert an entry within the level lookup table.
 
     Adds all non-existent entries. Does not commit changes.
@@ -42,15 +43,16 @@ def add_level_lookup(db: Session, lookup: dict[int, int]):
     for trixel_id in lookup.keys():
         clauses.append(model.LevelLookup.trixel_id == trixel_id)
 
-    existing_trixels = db.query(model.LevelLookup.trixel_id).where(or_(*clauses)).all()
+    query = select(model.LevelLookup.trixel_id).where(or_(*clauses))
+    existing_trixels = (await db.execute(query)).scalars().all()
 
-    new_trixels = lookup.keys() - set([x[0] for x in existing_trixels])
+    new_trixels = lookup.keys() - set(existing_trixels)
     for trixel_id in new_trixels:
         db.add(model.LevelLookup(trixel_id=trixel_id, level=lookup[trixel_id]))
 
 
-def create_trixel_map(
-    db: Session, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
+async def create_trixel_map(
+    db: AsyncSession, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
 ) -> model.TrixelMap:
     """
     Create an entry in the trixel map for a given trixel id and measurement type.
@@ -64,14 +66,13 @@ def create_trixel_map(
     try:
         level = HTM.get_level(trixel_id)
 
-        type_id: model.MeasurementType = (
-            db.query(model.MeasurementType.id).where(model.MeasurementType.name == type_.value).one()
-        )
+        query = select(model.MeasurementType.id).where(model.MeasurementType.name == type_.value)
+        type_id: model.MeasurementType = (await db.execute(query)).scalars().one()
 
-        trixel = model.TrixelMap(id=trixel_id, type_id=type_id[0], sensor_count=sensor_count)
+        trixel = model.TrixelMap(id=trixel_id, type_id=type_id, sensor_count=sensor_count)
         db.add(trixel)
-        add_level_lookup(db, {trixel_id: level})
-        db.commit()
+        await add_level_lookup(db, {trixel_id: level})
+        await db.commit()
 
         return trixel
 
@@ -79,8 +80,8 @@ def create_trixel_map(
         raise ValueError(f"Invalid trixel id: {trixel_id}")
 
 
-def update_trixel_map(
-    db: Session, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
+async def update_trixel_map(
+    db: AsyncSession, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
 ) -> model.TrixelMap | None:
     """
     Update an entry within the trixel map for a given trixel id and measurement type.
@@ -92,28 +93,32 @@ def update_trixel_map(
     """
     stmt = (
         update(model.TrixelMap)
-        .where(model.TrixelMap.id == trixel_id)
-        .where(and_(model.TrixelMap.type_id == model.MeasurementType.id, model.MeasurementType.name == type_.value))
+        .where(
+            model.TrixelMap.id == trixel_id,
+            model.TrixelMap.type_id == model.MeasurementType.id,
+            model.MeasurementType.name == type_.value,
+        )
         .values(sensor_count=sensor_count)
     )
 
-    result = db.execute(stmt)
+    result = await db.execute(stmt)
     if result.rowcount == 0:
-        db.rollback()
+        await db.rollback()
         return None
 
-    db.commit()
+    await db.commit()
 
-    return (
-        db.query(model.TrixelMap)
-        .where(model.TrixelMap.id == trixel_id)
-        .where(and_(model.TrixelMap.type_id == model.MeasurementType.id, model.MeasurementType.name == type_.value))
-        .one()
+    # Update with returning not supported by mysql
+    query = select(model.TrixelMap).where(
+        model.TrixelMap.id == trixel_id,
+        model.TrixelMap.type_id == model.MeasurementType.id,
+        model.MeasurementType.name == type_.value,
     )
+    return (await db.execute(query)).scalars().one()
 
 
-def upsert_trixel_map(
-    db: Session, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
+async def upsert_trixel_map(
+    db: AsyncSession, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
 ) -> model.TrixelMap:
     """
     Update or insert into the trixel map if not present.
@@ -123,14 +128,14 @@ def upsert_trixel_map(
     :param sensor_count: new value
     :return: updated/inserted trixel
     """
-    if trixel := update_trixel_map(db, trixel_id, type_, sensor_count):
+    if trixel := await update_trixel_map(db, trixel_id, type_, sensor_count):
         return trixel
     else:
-        return create_trixel_map(db, trixel_id, type_, sensor_count)
+        return await create_trixel_map(db, trixel_id, type_, sensor_count)
 
 
-def get_trixel_map(
-    db: Session, trixel_id: int, types: list[model.MeasurementTypeEnum] | None = None
+async def get_trixel_map(
+    db: AsyncSession, trixel_id: int, types: list[model.MeasurementTypeEnum] | None = None
 ) -> list[model.TrixelMap]:
     """
     Get the number of sensors per type for a trixel from the DB.
@@ -147,22 +152,17 @@ def get_trixel_map(
 
     types = [type.value for type in types] if types is not None else [enum.value for enum in model.MeasurementTypeEnum]
 
-    return (
-        db.query(model.TrixelMap)
-        .where(
-            and_(
-                model.TrixelMap.id == trixel_id,
-                model.TrixelMap.type_id == model.MeasurementType.id,
-                model.MeasurementType.name.in_(types),
-                model.TrixelMap.sensor_count > 0,
-            )
-        )
-        .all()
+    query = select(model.TrixelMap).where(
+        model.TrixelMap.id == trixel_id,
+        model.TrixelMap.type_id == model.MeasurementType.id,
+        model.MeasurementType.name.in_(types),
+        model.TrixelMap.sensor_count > 0,
     )
+    return (await db.execute(query)).scalars().all()
 
 
-def get_trixel_ids(
-    db: Session,
+async def get_trixel_ids(
+    db: AsyncSession,
     trixel_id: int | None = None,
     types: list[model.MeasurementTypeEnum] | None = None,
     limit: PositiveInt = 100,
@@ -180,7 +180,7 @@ def get_trixel_ids(
     types = [type.value for type in types] if types is not None else [enum.value for enum in model.MeasurementTypeEnum]
 
     query = (
-        db.query(model.TrixelMap.id, model.LevelLookup)
+        select(model.TrixelMap.id, model.LevelLookup)
         .where(and_(model.TrixelMap.id == model.LevelLookup.trixel_id, model.TrixelMap.sensor_count > 0))
         .where(and_(model.TrixelMap.type_id == model.MeasurementType.id, model.MeasurementType.name.in_(types)))
     )
@@ -196,11 +196,13 @@ def get_trixel_ids(
         except ValueError:
             raise ValueError(f"Invalid trixel id: {trixel_id}")
 
-    result = query.distinct().offset(offset=offset).limit(limit=limit).all()
-    return [x[0] for x in result]
+    query = query.distinct().offset(offset=offset).limit(limit=limit)
+
+    result = (await db.execute(query)).scalars().all()
+    return result
 
 
-def get_responsible_tms(db: Session, trixel_id: int) -> TrixelManagementServer | None:
+async def get_responsible_tms(db: AsyncSession, trixel_id: int) -> TrixelManagementServer | None:
     """
     Get the TMS responsible for the provided Trixel.
 
@@ -218,7 +220,7 @@ def get_responsible_tms(db: Session, trixel_id: int) -> TrixelManagementServer |
 
         # Select TMS with the highest level which matches the trixel
         query = (
-            db.query(TrixelManagementServer)
+            select(TrixelManagementServer)
             .join(
                 TMSDelegation,
                 and_(
@@ -232,7 +234,7 @@ def get_responsible_tms(db: Session, trixel_id: int) -> TrixelManagementServer |
             .order_by(desc(model.LevelLookup.level))
         )
 
-        return query.first()
+        return (await db.execute(query)).scalars().first()
 
     except ValueError:
         raise ValueError(f"Invalid trixel id: {trixel_id}")

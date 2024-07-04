@@ -1,9 +1,11 @@
 """Database and session preset configuration."""
 
 import os
+from typing import Any, AsyncGenerator
 
-from sqlalchemy import URL, create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import URL
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import declarative_base
 
 # Prefer custom DB definition over custom (partial) definition over default
 DATABASE_URL = os.getenv("TLS_CUSTOM_DB_URL")
@@ -21,23 +23,20 @@ if DATABASE_URL is None and os.getenv("TLS_DB_DIALECT") is not None:
 # Default local sqlite
 connect_args = {}
 if DATABASE_URL is None:
-    DATABASE_URL = "sqlite:///./tls_sqlite.db"
+    DATABASE_URL = "sqlite+aiosqlite:///./tls_sqlite.db"
     connect_args = {"check_same_thread": False}
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+engine = create_async_engine(DATABASE_URL, connect_args=connect_args)
 
-MetaSession = sessionmaker(autoflush=False, autocommit=False, bind=engine)
+MetaSession = async_sessionmaker(autoflush=False, autocommit=False, expire_on_commit=False, bind=engine)
 
 Base = declarative_base()
 
 
-def get_db():
+async def get_db() -> AsyncGenerator[AsyncSession, Any]:
     """Instantiate a temporary session for endpoint invocation."""
-    db = MetaSession()
-    try:
+    async with MetaSession() as db:
         yield db
-    finally:
-        db.close()
 
 
 def except_columns(base, *exclusions: str) -> list[str]:

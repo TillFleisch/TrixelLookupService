@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir --force-reinstall dist/*.whl
 RUN apk update \
     && apk add --virtual build-deps gcc python3-dev musl-dev \
     && apk add --no-cache mariadb-dev libpq-dev
-RUN pip install --no-cache-dir mysqlclient pymysql cryptography psycopg2 pg8000
+RUN pip install --no-cache-dir asyncmy aiomysql cryptography asyncpg
 RUN apk del build-deps
 
 EXPOSE 80

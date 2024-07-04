@@ -28,6 +28,7 @@ dependencies = [
     'requests',
     'colorlog',
     'PyJWT',
+    'aiosqlite',
 ]
 
 [project.urls]

@@ -5,9 +5,10 @@ from secrets import token_bytes
 import jwt
 from pydantic import PositiveInt
 from pynyhtm import HTM
-from sqlalchemy import and_, update
+from sqlalchemy import and_, delete, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from crud import add_level_lookup
 from database import except_columns
@@ -17,7 +18,7 @@ from . import model
 MAX_INTEGRITY_ERROR_RETRIES = 10
 
 
-def create_tms(db: Session, host: str) -> model.TrixelManagementServer:
+async def create_tms(db: AsyncSession, host: str) -> model.TrixelManagementServer:
     """
     Generate an authentication token and create a new TMS entry within the database.
 
@@ -30,19 +31,19 @@ def create_tms(db: Session, host: str) -> model.TrixelManagementServer:
         try:
             tms = model.TrixelManagementServer(host=host, token_secret=token_bytes(256))
             db.add(tms)
-            db.commit()
-            db.refresh(tms)
+            await db.commit()
+            await db.refresh(tms)
             return tms
         except IntegrityError as e:
-            db.rollback()
+            await db.rollback()
             retries += 1
             if retries >= MAX_INTEGRITY_ERROR_RETRIES:
                 raise e
             continue
 
 
-def get_tms_list(
-    db: Session,
+async def get_tms_list(
+    db: AsyncSession,
     active: bool = None,
     limit: int = 100,
     offset: int = 0,
@@ -55,15 +56,16 @@ def get_tms_list(
     :param offset: skips the first n results
     :returns: list of TMS IDs
     """
-    query = db.query(model.TrixelManagementServer.id)
+    query = select(model.TrixelManagementServer.id)
     if active is not None:
         query = query.where(model.TrixelManagementServer.active == active)
-    result = query.offset(offset=offset).limit(limit=limit).all()
-    return [x[0] for x in result]
+    query = query.offset(offset=offset).limit(limit=limit)
+
+    return (await db.execute(query)).scalars().all()
 
 
-def get_tms(
-    db: Session,
+async def get_tms(
+    db: AsyncSession,
     tms_id: int = None,
     active: bool = None,
     limit: int = 100,
@@ -78,15 +80,16 @@ def get_tms(
     :param offset: skips the first n results
     :returns: List of detailed TMS entries
     """
-    query = db.query(*except_columns(model.TrixelManagementServer, "token_secret"))
+    query = select(*except_columns(model.TrixelManagementServer, "token_secret"))
     if tms_id is not None:
         query = query.where(model.TrixelManagementServer.id == tms_id)
     if active is not None:
         query = query.where(model.TrixelManagementServer.active == active)
-    return query.offset(offset=offset).limit(limit=limit).all()
+    query = query.offset(offset=offset).limit(limit=limit)
+    return (await db.execute(query)).all()
 
 
-def verify_tms_token(db: Session, jwt_token: bytes):
+async def verify_tms_token(db: AsyncSession, jwt_token: bytes):
     """
     Check authentication token validity.
 
@@ -96,20 +99,19 @@ def verify_tms_token(db: Session, jwt_token: bytes):
     """
     try:
         unverified_payload = jwt.decode(jwt_token, options={"verify_signature": False}, algorithms=["HS256"])
-        if (
-            token_secret := db.query(model.TrixelManagementServer.token_secret)
-            .where(model.TrixelManagementServer.id == unverified_payload["tms_id"])
-            .first()
-        ):
-            payload = jwt.decode(jwt_token, token_secret[0], algorithms=["HS256"])
+        query = select(model.TrixelManagementServer.token_secret).where(
+            model.TrixelManagementServer.id == unverified_payload["tms_id"]
+        )
+        if token_secret := (await db.execute(query)).scalars().first():
+            payload = jwt.decode(jwt_token, token_secret, algorithms=["HS256"])
             return payload["tms_id"]
     except jwt.PyJWTError:
         raise PermissionError("Invalid TMS authentication token.")
     raise PermissionError("Invalid TMS authentication token.")
 
 
-def update_tms(
-    db: Session, id: int, active: bool | None = None, host: str | None = None
+async def update_tms(
+    db: AsyncSession, id: int, active: bool | None = None, host: str | None = None
 ) -> model.TrixelManagementServer:
     """Update TMS properties within the database.
 
@@ -129,26 +131,26 @@ def update_tms(
 
         # Remove all TMS delegations
         if not active:
-            db.query().filter(model.TrixelManagementServer.id == id).delete()
+            await db.execute(delete(model.TrixelManagementServer).filter(model.TrixelManagementServer.id == id))
 
     if host is not None:
         stmt = stmt.values(host=host)
 
-    result = db.execute(stmt)
+    result = await db.execute(stmt)
     if result.rowcount == 0:
-        db.rollback()
+        await db.rollback()
         raise ValueError("No TMS with the provided id exists!")
 
-    db.commit()
+    await db.commit()
 
-    return (
-        db.query(*except_columns(model.TrixelManagementServer, "token_secret"))
-        .where(model.TrixelManagementServer.id == id)
-        .one()
+    # Update with returning not supported by mysql
+    query = select(*except_columns(model.TrixelManagementServer, "token_secret")).where(
+        model.TrixelManagementServer.id == id
     )
+    return (await db.execute(query)).one()
 
 
-def insert_delegations(db: Session, tms_id: int, trixel_ids: list[int]) -> model.TMSDelegation:
+async def insert_delegations(db: AsyncSession, tms_id: int, trixel_ids: list[int]) -> model.TMSDelegation:
     """
     Insert one or more trixel delegations into the database.
 
@@ -159,11 +161,10 @@ def insert_delegations(db: Session, tms_id: int, trixel_ids: list[int]) -> model
     :returns: list of TMS delegations
     :raises ValueError: if one of trixel ids is invalid
     """
-    tms: model.TrixelManagementServer = (
-        db.query(*except_columns(model.TrixelManagementServer, "token_secret"))
-        .where(model.TrixelManagementServer.id == tms_id)
-        .first()
+    query = select(*except_columns(model.TrixelManagementServer, "token_secret")).where(
+        model.TrixelManagementServer.id == tms_id
     )
+    tms: model.TrixelManagementServer = (await db.execute(query)).first()
 
     if tms is None:
         raise RuntimeError(f"TMS with id {tms_id} does not exist!")
@@ -183,16 +184,16 @@ def insert_delegations(db: Session, tms_id: int, trixel_ids: list[int]) -> model
         delegations.append(tms_delegation)
         level_lookup[trixel] = level
 
-    add_level_lookup(db, level_lookup)
-    db.commit()
+    await add_level_lookup(db, level_lookup)
+    await db.commit()
 
     for tms_delegation in delegations:
-        db.refresh(tms_delegation)
+        await db.refresh(tms_delegation)
     return delegations
 
 
-def get_all_delegations(
-    db: Session,
+async def get_all_delegations(
+    db: AsyncSession,
     limit: PositiveInt = 100,
     offset: int = 0,
 ) -> list[model.TMSDelegation]:
@@ -203,8 +204,8 @@ def get_all_delegations(
     :param offset: skips the first n results
     :returns: list of TMSDelegations
     """
-    return (
-        db.query(model.TMSDelegation)
+    query = (
+        select(model.TMSDelegation)
         .join(
             model.TrixelManagementServer,
             and_(
@@ -214,11 +215,11 @@ def get_all_delegations(
         )
         .offset(offset=offset)
         .limit(limit=limit)
-        .all()
     )
+    return (await db.execute(query)).scalars().all()
 
 
-def get_tms_delegations(db: Session, tms_id: int) -> list[model.TMSDelegation]:
+async def get_tms_delegations(db: AsyncSession, tms_id: int) -> list[model.TMSDelegation]:
     """
     Get all delegations for a TMS including delegations from excluded trixels.
 
@@ -226,13 +227,14 @@ def get_tms_delegations(db: Session, tms_id: int) -> list[model.TMSDelegation]:
     :returns: list of TMSDelegations
     :raises ValueError: if the a tms with ID does not exists
     """
-    if db.query(model.TrixelManagementServer.id).where(model.TrixelManagementServer.id == tms_id).first() is None:
+    query = select(model.TrixelManagementServer.id).where(model.TrixelManagementServer.id == tms_id)
+    if (await db.execute(query)).scalars().first() is None:
         raise ValueError(f"TMS with ID {tms_id} does not exist.")
 
     self = aliased(model.TMSDelegation)
 
     res = (
-        db.query(model.TMSDelegation, self)
+        select(model.TMSDelegation, self)
         .where(model.TMSDelegation.tms_id == tms_id)
         .join(
             model.TrixelManagementServer,
@@ -250,8 +252,8 @@ def get_tms_delegations(db: Session, tms_id: int) -> list[model.TMSDelegation]:
             ),
             isouter=True,
         )
-        .all()
     )
+    res = (await db.execute(res)).all()
 
     flat = list()
     for r in res:
