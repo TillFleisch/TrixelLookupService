@@ -33,7 +33,7 @@ def test_update_trixel_sensor_count_temperature(empty_db):
         host = "bread.crumbs"
         m.get("https://bread.crumbs/ping", text='{"ping":"pong"}')
         response = client.post(f"/TMS/?{urllib.parse.urlencode({'host':host})}")
-        assert response.status_code == HTTPStatus.OK, response.text
+        assert response.status_code == HTTPStatus.CREATED, response.text
         pytest.tms_token = response.json()["token"]
 
     response = client.put(

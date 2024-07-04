@@ -24,7 +24,7 @@ def test_post_and_update_TMS():
         host = "bread.crumbs.local"
         m.get("https://bread.crumbs.local/ping", text='{"ping":"pong"}')
         response = client.post(f"/TMS/?{urllib.parse.urlencode({'host':host})}")
-        assert response.status_code == HTTPStatus.OK, response.text
+        assert response.status_code == HTTPStatus.CREATED, response.text
         data = response.json()
         assert "token" in data
         token = data["token"]

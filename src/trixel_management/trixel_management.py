@@ -129,6 +129,7 @@ async def get_tms(
         },
         400: {"content": {"application/json": {"example": {"detail": "TMS ping unsuccessful!"}}}},
     },
+    status_code=HTTPStatus.CREATED,
 )
 async def create_tms(
     host: str = Query(description="Address under which the TMS is available."),
