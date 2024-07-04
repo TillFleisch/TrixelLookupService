@@ -41,7 +41,7 @@ class MeasurementType(Base):
 
     __tablename__ = "MeasurementType"
 
-    id = Column(Integer, unique=True, primary_key=True, nullable=False)
+    id = Column(Integer, unique=True, primary_key=True, nullable=False, index=True)
     name = Column(String(32), unique=True, nullable=False)
 
 
@@ -51,7 +51,7 @@ class TrixelMap(Base):
     __tablename__ = "TrixelMap"
 
     # Combined primary key from id, type
-    id = Column(Integer, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False)
+    id = Column(Integer, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False, index=True)
     type_id = Column(Integer, ForeignKey("MeasurementType.id"), primary_key=True, nullable=False)
     sensor_count = Column(Integer, default=0, nullable=False)
 
@@ -66,7 +66,7 @@ class LevelLookup(Base):
 
     __tablename__ = "LevelLookup"
 
-    trixel_id = Column(Integer, primary_key=True, nullable=False, unique=True)
+    trixel_id = Column(Integer, primary_key=True, nullable=False, unique=True, index=True)
     level = Column(Integer, nullable=False)
 
     __table_args__ = (CheckConstraint(level >= 0, name="check_non_negative_level"),)

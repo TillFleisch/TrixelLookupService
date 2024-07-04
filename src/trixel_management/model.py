@@ -19,7 +19,7 @@ class TrixelManagementServer(Base):
 
     __tablename__ = "TrixelManagementServer"
 
-    id = Column(Integer, primary_key=True, unique=True, autoincrement=True, nullable=False)
+    id = Column(Integer, primary_key=True, unique=True, autoincrement=True, nullable=False, index=True)
     host = Column(String(256))
     token_secret = Column(LargeBinary(256))
     active = Column(Boolean, default=False, nullable=False)
@@ -36,8 +36,8 @@ class TMSDelegation(Base):
 
     __tablename__ = "TMSDelegation"
 
-    tms_id = Column(Integer, ForeignKey("TrixelManagementServer.id"), primary_key=True, nullable=False)
-    trixel_id = Column(Integer, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False)
+    tms_id = Column(Integer, ForeignKey("TrixelManagementServer.id"), primary_key=True, nullable=False, index=True)
+    trixel_id = Column(Integer, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False, index=True)
     exclude = Column(Boolean, default=False, nullable=False)
 
     tms = relationship("TrixelManagementServer", back_populates="delegations")
