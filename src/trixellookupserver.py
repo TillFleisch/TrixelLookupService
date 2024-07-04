@@ -8,7 +8,7 @@ from typing import Annotated, List
 import packaging.version
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Path, Query
-from pydantic import PositiveInt
+from pydantic import NonNegativeInt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import crud
@@ -90,8 +90,8 @@ async def get_trixel_list(
             description="List of measurement types which restrict results. If none are provided, all types are used."
         ),
     ] = None,
-    limit: PositiveInt = Query(100, description="Limits the number of results."),
-    offset: PositiveInt = Query(0, description="Skip the first n results."),
+    limit: Annotated[NonNegativeInt, Query(description="Limits the number of results.")] = 100,
+    offset: Annotated[NonNegativeInt, Query(description="Skip the first n results.")] = 0,
     db: AsyncSession = Depends(get_db),
 ) -> list[int]:
     """Get a list of trixel ids with at least one sensor (filtered by measurement type)."""
@@ -111,15 +111,15 @@ async def get_trixel_list(
     },
 )
 async def get_sub_trixel_list(
-    trixel_id: int = Path(description="Root trixel which makes up the search space for sub-trixels."),
+    trixel_id: Annotated[int, Path(description="Root trixel which makes up the search space for sub-trixels.")],
     types: Annotated[
         List[model.MeasurementTypeEnum],
         Query(
             description="List of measurement types which restrict results. If none are provided, all types are used."
         ),
     ] = None,
-    limit: PositiveInt = Query(100, description="Limits the number of results."),
-    offset: PositiveInt = Query(0, description="Skip the first n results."),
+    limit: Annotated[NonNegativeInt, Query(description="Limits the number of results.")] = 100,
+    offset: Annotated[NonNegativeInt, Query(description="Skip the first n results.")] = 0,
     db: AsyncSession = Depends(get_db),
 ) -> list[int]:
     """Get a list of sub-trixel ids with at least one sensor (filtered by measurement type)."""
@@ -139,7 +139,7 @@ async def get_sub_trixel_list(
     },
 )
 async def get_trixel_info(
-    trixel_id: int = Path(description="The id of the trixel for which the sensor count is to be determined."),
+    trixel_id: Annotated[int, Path(description="The id of the trixel for which the sensor count is to be determined.")],
     types: Annotated[
         List[model.MeasurementTypeEnum],
         Query(
@@ -154,7 +154,7 @@ async def get_trixel_info(
 
         sensor_counts = dict()
         for trixel_map in results or []:
-            sensor_counts[model.MeasurementTypeEnum.get_from_id(trixel_map.type_id)] = trixel_map.sensor_count
+            sensor_counts[trixel_map.type_id] = trixel_map.sensor_count
 
         return schema.TrixelMap(id=trixel_id, sensor_counts=sensor_counts)
 
@@ -174,9 +174,11 @@ async def get_trixel_info(
     },
 )
 async def update_trixel_sensor_count(
-    trixel_id: int = Path(description="The Trixel id for which the sensor count is updated."),
-    type: model.MeasurementTypeEnum = Path(description="Type of measurement for which the sensor count is updated."),
-    sensor_count: int = Query(description="The new number of sensors for the given type within the trixel."),
+    trixel_id: Annotated[int, Path(description="The Trixel id for which the sensor count is updated.")],
+    type: Annotated[
+        model.MeasurementTypeEnum, Path(description="Type of measurement for which the sensor count is updated.")
+    ],
+    sensor_count: Annotated[int, Query(description="The new number of sensors for the given type within the trixel.")],
     token_tms_id: int = Depends(verify_tms_token),
     db: AsyncSession = Depends(get_db),
 ) -> schema.TrixelMapUpdate:
@@ -186,10 +188,7 @@ async def update_trixel_sensor_count(
         if owner is None or owner.id != token_tms_id:
             raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only modify own TMS properties.")
 
-        result = await crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
-        return schema.TrixelMapUpdate(
-            id=result.id, sensor_count=result.sensor_count, type_=model.MeasurementTypeEnum.get_from_id(result.type_id)
-        )
+        return await crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
     except ValueError:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
 
@@ -205,7 +204,7 @@ async def update_trixel_sensor_count(
     },
 )
 async def get_responsible_tms(
-    trixel_id: int = Path(description="The Trixel id for which the TMS is determined."),
+    trixel_id: Annotated[int, Path(description="The Trixel id for which the TMS is determined.")],
     db: AsyncSession = Depends(get_db),
 ) -> TrixelManagementServer:
     """Get the TMS responsible for a Trixel."""

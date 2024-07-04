@@ -3,11 +3,12 @@
 import os
 from datetime import datetime, timezone
 from http import HTTPStatus
+from typing import Annotated
 
 import jwt
 import requests
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query
-from pydantic import PositiveInt
+from pydantic import NonNegativeInt
 from requests.exceptions import SSLError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,7 +51,7 @@ def api_ping_verification(host: str):
 
 
 async def verify_tms_token(
-    token: str = Header(description="TMS authentication token."),
+    token: Annotated[str, Header(description="TMS authentication token.")],
     db: AsyncSession = Depends(get_db),
 ) -> int:
     """
@@ -73,9 +74,9 @@ async def verify_tms_token(
     tags=[TAG_TMS],
 )
 async def get_tms_list(
-    active: bool | None = Query(None, description="Filters results by the TMS state."),
-    limit: PositiveInt = Query(100, description="Limits the number of results."),
-    offset: PositiveInt = Query(0, description="Skip the first n results."),
+    active: Annotated[bool | None, Query(description="Filters results by the TMS state.")] = None,
+    limit: Annotated[NonNegativeInt, Query(description="Limits the number of results.")] = 100,
+    offset: Annotated[NonNegativeInt, Query(description="Skip the first n results.")] = 0,
     db: AsyncSession = Depends(get_db),
 ) -> list[int]:
     """Get a list of all registered trixel management server IDs."""
@@ -89,8 +90,8 @@ async def get_tms_list(
     tags=[TAG_TMS],
 )
 async def get_delegations(
-    limit: PositiveInt = Query(100, description="Limits the number of results."),
-    offset: PositiveInt = Query(0, description="Skip the first n results."),
+    limit: Annotated[NonNegativeInt, Query(description="Limits the number of results.")] = 100,
+    offset: Annotated[NonNegativeInt, Query(description="Skip the first n results.")] = 0,
     db: AsyncSession = Depends(get_db),
 ) -> list[schema.TMSDelegation]:
     """Get a list of all delegations."""
@@ -107,7 +108,7 @@ async def get_delegations(
     },
 )
 async def get_tms(
-    tms_id: int = Path(description="ID of the desired TMS."),
+    tms_id: Annotated[int, Path(description="ID of the desired TMS.")],
     db: AsyncSession = Depends(get_db),
 ) -> schema.TrixelManagementServer:
     """Get detailed information about a TMS."""
@@ -132,7 +133,7 @@ async def get_tms(
     status_code=HTTPStatus.CREATED,
 )
 async def create_tms(
-    host: str = Query(description="Address under which the TMS is available."),
+    host: Annotated[str, Query(description="Address under which the TMS is available.")],
     db: AsyncSession = Depends(get_db),
 ) -> schema.TrixelManagementServerCreate:
     """
@@ -178,8 +179,8 @@ async def create_tms(
     },
 )
 async def update_tms(
-    host: str = Query(description="New address under which the TMS is available."),
-    tms_id: int = Path(description="TMS to which changes apply."),
+    host: Annotated[str, Query(description="New address under which the TMS is available.")],
+    tms_id: Annotated[int, Path(description="TMS to which changes apply.")],
     token_tms_id: int = Depends(verify_tms_token),
     db: AsyncSession = Depends(get_db),
 ) -> schema.TrixelManagementServer:
@@ -202,7 +203,7 @@ async def update_tms(
     },
 )
 async def get_tms_delegations(
-    tms_id: int = Path(description="ID of the desired TMS."),
+    tms_id: Annotated[int, Path(description="ID of the desired TMS.")],
     db: AsyncSession = Depends(get_db),
 ) -> list[schema.TMSDelegation]:
     """Get the delegations and exceptions associated with this TMS."""
