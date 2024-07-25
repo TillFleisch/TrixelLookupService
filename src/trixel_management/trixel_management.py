@@ -211,3 +211,22 @@ async def get_tms_delegations(
         return await crud.get_tms_delegations(db, tms_id=tms_id)
     except ValueError:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TMS with the given ID does not exist.")
+
+
+@router.get(
+    "/{tms_id}/validate_token",
+    name="Validate TMS Token",
+    summary="Check if a TMS authentication token is valid.",
+    tags=[TAG_TMS],
+    responses={
+        401: {"content": {"application/json": {"example": {"detail": "Invalid TMS authentication token!"}}}},
+    },
+    status_code=HTTPStatus.OK,
+)
+async def validate_token_tms(
+    tms_id: Annotated[int, Path(description="ID of the TMS.")],
+    token_tms_id: int = Depends(verify_tms_token),
+) -> None:
+    """Endpoint which allows to check if a TMS authentication token is valid."""
+    if token_tms_id != tms_id:
+        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Invalid TMS authentication token!")

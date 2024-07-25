@@ -48,6 +48,9 @@ def test_post_and_update_TMS():
     response = client.put(f"/TMS/35/?{urllib.parse.urlencode({'host':new_host})}", headers={"token": token})
     assert response.status_code == HTTPStatus.FORBIDDEN, response.text
 
+    response = client.get("/TMS/1/validate_token", headers={"token": token})
+    assert response.status_code == HTTPStatus.OK
+
 
 @pytest.mark.order(202)
 def test_post_invalid_token():
@@ -55,6 +58,13 @@ def test_post_invalid_token():
     new_host = "portal.gun.local"
     response = client.put(f"/TMS/1/?{urllib.parse.urlencode({'host':new_host})}", headers={"token": "fake-token"})
     assert response.status_code == HTTPStatus.UNAUTHORIZED, response.text
+
+
+@pytest.mark.order(202)
+def test_token_validation_invalid():
+    """Test the token validation endpoint with an invalid token."""
+    response = client.get("/TMS/1/validate_token", headers={"token": "fake-token"})
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
 
 
 @pytest.mark.order(202)
