@@ -193,6 +193,35 @@ async def update_trixel_sensor_count(
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
 
 
+@app.put(
+    "/trixel/sensor_count/{type}",
+    name="Batch update trixel count",
+    summary="Update the sensor count for multiple trixels for a given type.",
+    tags=[TAG_TRIXEL_INFO],
+    responses={
+        400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
+        403: {"content": {"application/json": {"example": {"detail": "Can only modify own TMS properties."}}}},
+        401: {"content": {"application/json": {"example": {"detail": "Invalid TMS authentication token!"}}}},
+    },
+)
+async def batch_update_trixel_sensor_count(
+    type: Annotated[
+        model.MeasurementTypeEnum, Path(description="Type of measurement for which the sensor count is updated.")
+    ],
+    updates: schema.BatchSensorMapUpdate,
+    token_tms_id: int = Depends(verify_tms_token),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Update (or insert new) multiple trixel sensor counts within the DB."""
+    try:
+        if not await crud.does_tms_own_trixels(db, tms_id=token_tms_id, trixel_ids=updates.keys()):
+            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only change delegated trixels!")
+
+        await crud.batch_upsert_trixel_map(db, updates=updates, type_=type)
+    except ValueError:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
+
+
 @app.get(
     "/trixel/{trixel_id}/TMS",
     name="Get TMS which manages the trixel.",

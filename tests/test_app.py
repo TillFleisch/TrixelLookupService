@@ -1,5 +1,6 @@
 """Global tests for the Trixel Lookup Server app."""
 
+import json
 import urllib
 from http import HTTPStatus
 
@@ -202,6 +203,26 @@ def test_non_existent_sub_trixel_list(id: int):
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
     assert len(data) == 0
+
+
+@pytest.mark.order(107)
+def test_bulk_update_trixel_sensor_count_humidity():
+    """Test bulk trixel update/insertion for relative humidity."""
+    updates = {10: 2, 13: 3, 61: 12}
+
+    response = client.put(
+        "/trixel/sensor_count/relative_humidity", headers={"token": pytest.tms_token}, content=json.dumps(updates)
+    )
+    assert response.status_code == HTTPStatus.OK
+
+    for trixel_id, sensor_count in updates.items():
+        response = client.get(f"/trixel/{trixel_id}/sensor_count?types=relative_humidity")
+        assert response.status_code == HTTPStatus.OK, response.text
+        get_data = response.json()
+        print(get_data)
+        assert get_data["id"] == trixel_id
+        assert "relative_humidity" in get_data["sensor_counts"]
+        assert get_data["sensor_counts"]["relative_humidity"] == sensor_count
 
 
 @pytest.mark.order(100)

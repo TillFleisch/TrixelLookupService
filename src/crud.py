@@ -1,6 +1,6 @@
 """Global database wrappers."""
 
-from pydantic import PositiveInt
+from pydantic import NonNegativeInt, PositiveInt
 from pynyhtm import HTM
 from sqlalchemy import and_, desc, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -134,6 +134,21 @@ async def upsert_trixel_map(
         return await create_trixel_map(db, trixel_id, type_, sensor_count)
 
 
+async def batch_upsert_trixel_map(
+    db: AsyncSession, type_: model.MeasurementTypeEnum, updates: dict[int, NonNegativeInt]
+) -> None:
+    """
+    Update or insert multiple entries into the trixel map if not present.
+
+    :param update: map which holds the sensor count for different trixel IDs
+    :param type_: measurement type for which the sensor map is updated
+    :raises ValueError: if the trixel id is invalid
+    """
+    # TODO: use bulk insert/update
+    for trixel_id, sensor_count in updates.items():
+        await upsert_trixel_map(db, trixel_id=trixel_id, sensor_count=sensor_count, type_=type_)
+
+
 async def get_trixel_map(
     db: AsyncSession, trixel_id: int, types: list[model.MeasurementTypeEnum] | None = None
 ) -> list[model.TrixelMap]:
@@ -232,9 +247,26 @@ async def get_responsible_tms(db: AsyncSession, trixel_id: int) -> TrixelManagem
             .where(or_(*clauses))
             .join(model.LevelLookup, model.LevelLookup.trixel_id == TMSDelegation.trixel_id)
             .order_by(desc(model.LevelLookup.level))
+            .limit(1)
         )
 
-        return (await db.execute(query)).scalars().first()
+        return (await db.execute(query)).scalar_one_or_none()
 
     except ValueError:
         raise ValueError(f"Invalid trixel id: {trixel_id}")
+
+
+async def does_tms_own_trixels(db: AsyncSession, tms_id: int, trixel_ids: set[int]) -> bool:
+    """
+    Determine if a given set of trixel IDs is delegated to a TMS.
+
+    :param tms_id: The identifier of the TMS
+    :param trixel_ids: A set of trixel identifiers.
+    :returns: True if all trixels are owned by the TMS, False otherwise
+    :raises ValueError: if the provided trixel_id is invalid
+    """
+    for trixel_id in trixel_ids:
+        responsible_tms: TrixelManagementServer | None = await get_responsible_tms(db, trixel_id)
+        if responsible_tms is None or responsible_tms.id != tms_id:
+            return False
+    return True

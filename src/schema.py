@@ -1,6 +1,8 @@
 """Collection of global pydantic schemata."""
 
-from pydantic import BaseModel, Field, field_validator
+from typing import Annotated
+
+from pydantic import BaseModel, Field, NonNegativeInt, field_validator
 
 from model import MeasurementTypeEnum
 
@@ -50,3 +52,12 @@ class TrixelMapUpdate(TrixelMapBase):
         if isinstance(data, int):
             return MeasurementTypeEnum.get_from_id(data)
         return data
+
+
+BatchSensorMapUpdate = Annotated[
+    dict[
+        Annotated[int, Field(description="A valid trixel identifier.")],
+        Annotated[NonNegativeInt, Field(description="The new sensor count for the given trixel.")],
+    ],
+    Field(description="A map which contains the new sensors count for multiple trixels."),
+]
