@@ -6,6 +6,7 @@ from sqlalchemy import and_, desc, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import model
+from schema import TrixelID
 from trixel_management.model import TMSDelegation, TrixelManagementServer
 
 
@@ -52,7 +53,7 @@ async def add_level_lookup(db: AsyncSession, lookup: dict[int, int]):
 
 
 async def create_trixel_map(
-    db: AsyncSession, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
+    db: AsyncSession, trixel_id: TrixelID, type_: model.MeasurementTypeEnum, sensor_count: int
 ) -> model.TrixelMap:
     """
     Create an entry in the trixel map for a given trixel id and measurement type.
@@ -61,27 +62,22 @@ async def create_trixel_map(
     :param type_: measurement type
     :param sensor_count: initial sensor_count value
     :returns: The added trixel
-    :raises ValueError: if the trixel id is invalid
     """
-    try:
-        level = HTM.get_level(trixel_id)
+    level = HTM.get_level(trixel_id)
 
-        query = select(model.MeasurementType.id).where(model.MeasurementType.name == type_.value)
-        type_id: model.MeasurementType = (await db.execute(query)).scalars().one()
+    query = select(model.MeasurementType.id).where(model.MeasurementType.name == type_.value)
+    type_id: model.MeasurementType = (await db.execute(query)).scalars().one()
 
-        trixel = model.TrixelMap(id=trixel_id, type_id=type_id, sensor_count=sensor_count)
-        db.add(trixel)
-        await add_level_lookup(db, {trixel_id: level})
-        await db.commit()
+    trixel = model.TrixelMap(id=trixel_id, type_id=type_id, sensor_count=sensor_count)
+    db.add(trixel)
+    await add_level_lookup(db, {trixel_id: level})
+    await db.commit()
 
-        return trixel
-
-    except ValueError:
-        raise ValueError(f"Invalid trixel id: {trixel_id}")
+    return trixel
 
 
 async def update_trixel_map(
-    db: AsyncSession, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
+    db: AsyncSession, trixel_id: TrixelID, type_: model.MeasurementTypeEnum, sensor_count: int
 ) -> model.TrixelMap | None:
     """
     Update an entry within the trixel map for a given trixel id and measurement type.
@@ -118,7 +114,7 @@ async def update_trixel_map(
 
 
 async def upsert_trixel_map(
-    db: AsyncSession, trixel_id: int, type_: model.MeasurementTypeEnum, sensor_count: int
+    db: AsyncSession, trixel_id: TrixelID, type_: model.MeasurementTypeEnum, sensor_count: int
 ) -> model.TrixelMap:
     """
     Update or insert into the trixel map if not present.
@@ -135,7 +131,7 @@ async def upsert_trixel_map(
 
 
 async def batch_upsert_trixel_map(
-    db: AsyncSession, type_: model.MeasurementTypeEnum, updates: dict[int, NonNegativeInt]
+    db: AsyncSession, type_: model.MeasurementTypeEnum, updates: dict[TrixelID, NonNegativeInt]
 ) -> None:
     """
     Update or insert multiple entries into the trixel map if not present.
@@ -150,7 +146,7 @@ async def batch_upsert_trixel_map(
 
 
 async def get_trixel_map(
-    db: AsyncSession, trixel_id: int, types: list[model.MeasurementTypeEnum] | None = None
+    db: AsyncSession, trixel_id: TrixelID, types: list[model.MeasurementTypeEnum] | None = None
 ) -> list[model.TrixelMap]:
     """
     Get the number of sensors per type for a trixel from the DB.
@@ -158,13 +154,7 @@ async def get_trixel_map(
     :param trixel_id: id of the trixel in question
     :param types: optional list of types which restrict results
     :returns: list of TrixelMap entries for the given id
-    :raises ValueError: if the trixel id is invalid
     """
-    try:
-        HTM.get_level(trixel_id)
-    except Exception:
-        raise ValueError(f"Invalid trixel id: {trixel_id}")
-
     types = [type.value for type in types] if types is not None else [enum.value for enum in model.MeasurementTypeEnum]
 
     query = select(model.TrixelMap).where(
@@ -178,7 +168,7 @@ async def get_trixel_map(
 
 async def get_trixel_ids(
     db: AsyncSession,
-    trixel_id: int | None = None,
+    trixel_id: TrixelID | None = None,
     types: list[model.MeasurementTypeEnum] | None = None,
     limit: PositiveInt = 100,
     offset: int = 0,
@@ -190,7 +180,6 @@ async def get_trixel_ids(
     :param limit: search result limit
     :param offset: skips the first n results
     :returns: list of trixel_ids
-    :raises ValueError: if the trixel id is invalid
     """
     types = [type.value for type in types] if types is not None else [enum.value for enum in model.MeasurementTypeEnum]
 
@@ -201,15 +190,12 @@ async def get_trixel_ids(
     )
 
     if trixel_id is not None:
-        try:
-            level = HTM.get_level(trixel_id)
+        level = HTM.get_level(trixel_id)
 
-            # Select all trixels where the ID contains the provided trixel_id as a prefix
-            query = query.where(model.LevelLookup.level >= level).where(
-                model.TrixelMap.id.bitwise_rshift((model.LevelLookup.level - level) * 2) == trixel_id
-            )
-        except ValueError:
-            raise ValueError(f"Invalid trixel id: {trixel_id}")
+        # Select all trixels where the ID contains the provided trixel_id as a prefix
+        query = query.where(model.LevelLookup.level >= level).where(
+            model.TrixelMap.id.bitwise_rshift((model.LevelLookup.level - level) * 2) == trixel_id
+        )
 
     query = query.distinct().offset(offset=offset).limit(limit=limit)
 
@@ -217,53 +203,47 @@ async def get_trixel_ids(
     return result
 
 
-async def get_responsible_tms(db: AsyncSession, trixel_id: int) -> TrixelManagementServer | None:
+async def get_responsible_tms(db: AsyncSession, trixel_id: TrixelID) -> TrixelManagementServer | None:
     """
     Get the TMS responsible for the provided Trixel.
 
     :param trixel_id: The trixel for which the TMS is determined.
     :returns: responsible TrixelManagementServer or None if not present
-    :raises ValueError: if the provided trixel_id is invalid
     """
-    try:
-        level = HTM.get_level(trixel_id)
+    level = HTM.get_level(trixel_id)
 
-        # Generate comparison with all parent trixels
-        clauses = list()
-        for i in range(0, level + 1):
-            clauses.append(TMSDelegation.trixel_id == (trixel_id >> i * 2))
+    # Generate comparison with all parent trixels
+    clauses = list()
+    for i in range(0, level + 1):
+        clauses.append(TMSDelegation.trixel_id == (trixel_id >> i * 2))
 
-        # Select TMS with the highest level which matches the trixel
-        query = (
-            select(TrixelManagementServer)
-            .join(
-                TMSDelegation,
-                and_(
-                    TrixelManagementServer.id == TMSDelegation.tms_id,
-                    TrixelManagementServer.active == True,  # noqa: E712
-                    TMSDelegation.exclude == False,  # noqa: E712
-                ),
-            )
-            .where(or_(*clauses))
-            .join(model.LevelLookup, model.LevelLookup.trixel_id == TMSDelegation.trixel_id)
-            .order_by(desc(model.LevelLookup.level))
-            .limit(1)
+    # Select TMS with the highest level which matches the trixel
+    query = (
+        select(TrixelManagementServer)
+        .join(
+            TMSDelegation,
+            and_(
+                TrixelManagementServer.id == TMSDelegation.tms_id,
+                TrixelManagementServer.active == True,  # noqa: E712
+                TMSDelegation.exclude == False,  # noqa: E712
+            ),
         )
+        .where(or_(*clauses))
+        .join(model.LevelLookup, model.LevelLookup.trixel_id == TMSDelegation.trixel_id)
+        .order_by(desc(model.LevelLookup.level))
+        .limit(1)
+    )
 
-        return (await db.execute(query)).scalar_one_or_none()
-
-    except ValueError:
-        raise ValueError(f"Invalid trixel id: {trixel_id}")
+    return (await db.execute(query)).scalar_one_or_none()
 
 
-async def does_tms_own_trixels(db: AsyncSession, tms_id: int, trixel_ids: set[int]) -> bool:
+async def does_tms_own_trixels(db: AsyncSession, tms_id: int, trixel_ids: set[TrixelID]) -> bool:
     """
     Determine if a given set of trixel IDs is delegated to a TMS.
 
     :param tms_id: The identifier of the TMS
     :param trixel_ids: A set of trixel identifiers.
     :returns: True if all trixels are owned by the TMS, False otherwise
-    :raises ValueError: if the provided trixel_id is invalid
     """
     for trixel_id in trixel_ids:
         responsible_tms: TrixelManagementServer | None = await get_responsible_tms(db, trixel_id)

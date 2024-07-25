@@ -15,7 +15,7 @@ import crud
 import model
 import schema
 from database import engine, get_db
-from schema import Ping, Version
+from schema import Ping, TrixelID, Version
 from trixel_management.schema import TrixelManagementServer
 from trixel_management.trixel_management import TAG_TMS
 from trixel_management.trixel_management import router as trixel_management_router
@@ -79,9 +79,6 @@ def get_semantic_version() -> Version:
     name="Get all trixels which have registered sensors.",
     summary="Retrieve an overview of all trixels, which contain at least one sensors of the specified types.",
     tags=[TAG_TRIXEL_INFO],
-    responses={
-        400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
-    },
 )
 async def get_trixel_list(
     types: Annotated[
@@ -95,10 +92,7 @@ async def get_trixel_list(
     db: AsyncSession = Depends(get_db),
 ) -> list[int]:
     """Get a list of trixel ids with at least one sensor (filtered by measurement type)."""
-    try:
-        return await crud.get_trixel_ids(db, types=types, limit=limit, offset=offset)
-    except ValueError:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
+    return await crud.get_trixel_ids(db, types=types, limit=limit, offset=offset)
 
 
 @app.get(
@@ -111,7 +105,7 @@ async def get_trixel_list(
     },
 )
 async def get_sub_trixel_list(
-    trixel_id: Annotated[int, Path(description="Root trixel which makes up the search space for sub-trixels.")],
+    trixel_id: Annotated[TrixelID, Path(description="Root trixel which makes up the search space for sub-trixels.")],
     types: Annotated[
         List[model.MeasurementTypeEnum],
         Query(
@@ -123,10 +117,7 @@ async def get_sub_trixel_list(
     db: AsyncSession = Depends(get_db),
 ) -> list[int]:
     """Get a list of sub-trixel ids with at least one sensor (filtered by measurement type)."""
-    try:
-        return await crud.get_trixel_ids(db, trixel_id=trixel_id, types=types, limit=limit, offset=offset)
-    except ValueError:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
+    return await crud.get_trixel_ids(db, trixel_id=trixel_id, types=types, limit=limit, offset=offset)
 
 
 @app.get(
@@ -139,7 +130,9 @@ async def get_sub_trixel_list(
     },
 )
 async def get_trixel_info(
-    trixel_id: Annotated[int, Path(description="The id of the trixel for which the sensor count is to be determined.")],
+    trixel_id: Annotated[
+        TrixelID, Path(description="The id of the trixel for which the sensor count is to be determined.")
+    ],
     types: Annotated[
         List[model.MeasurementTypeEnum],
         Query(
@@ -149,17 +142,13 @@ async def get_trixel_info(
     db: AsyncSession = Depends(get_db),
 ) -> schema.TrixelMap:
     """Get the sensor count for a trixel for different measurement types."""
-    try:
-        results = await crud.get_trixel_map(db, trixel_id, types)
+    results = await crud.get_trixel_map(db, trixel_id, types)
 
-        sensor_counts = dict()
-        for trixel_map in results or []:
-            sensor_counts[trixel_map.type_id] = trixel_map.sensor_count
+    sensor_counts = dict()
+    for trixel_map in results or []:
+        sensor_counts[trixel_map.type_id] = trixel_map.sensor_count
 
-        return schema.TrixelMap(id=trixel_id, sensor_counts=sensor_counts)
-
-    except ValueError:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
+    return schema.TrixelMap(id=trixel_id, sensor_counts=sensor_counts)
 
 
 @app.put(
@@ -168,13 +157,12 @@ async def get_trixel_info(
     summary="Update the sensor count for a given trixel and type.",
     tags=[TAG_TRIXEL_INFO],
     responses={
-        400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
         403: {"content": {"application/json": {"example": {"detail": "Can only modify own TMS properties."}}}},
         401: {"content": {"application/json": {"example": {"detail": "Invalid TMS authentication token!"}}}},
     },
 )
 async def update_trixel_sensor_count(
-    trixel_id: Annotated[int, Path(description="The Trixel id for which the sensor count is updated.")],
+    trixel_id: Annotated[TrixelID, Path(description="The Trixel id for which the sensor count is updated.")],
     type: Annotated[
         model.MeasurementTypeEnum, Path(description="Type of measurement for which the sensor count is updated.")
     ],
@@ -183,14 +171,11 @@ async def update_trixel_sensor_count(
     db: AsyncSession = Depends(get_db),
 ) -> schema.TrixelMapUpdate:
     """Update (or insert new) trixel sensor count within the DB."""
-    try:
-        owner = await crud.get_responsible_tms(db, trixel_id=trixel_id)
-        if owner is None or owner.id != token_tms_id:
-            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only modify own TMS properties.")
+    owner = await crud.get_responsible_tms(db, trixel_id=trixel_id)
+    if owner is None or owner.id != token_tms_id:
+        raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only modify own TMS properties.")
 
-        return await crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
-    except ValueError:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
+    return await crud.upsert_trixel_map(db, trixel_id=trixel_id, type_=type, sensor_count=sensor_count)
 
 
 @app.put(
@@ -199,7 +184,6 @@ async def update_trixel_sensor_count(
     summary="Update the sensor count for multiple trixels for a given type.",
     tags=[TAG_TRIXEL_INFO],
     responses={
-        400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
         403: {"content": {"application/json": {"example": {"detail": "Can only modify own TMS properties."}}}},
         401: {"content": {"application/json": {"example": {"detail": "Invalid TMS authentication token!"}}}},
     },
@@ -213,13 +197,10 @@ async def batch_update_trixel_sensor_count(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Update (or insert new) multiple trixel sensor counts within the DB."""
-    try:
-        if not await crud.does_tms_own_trixels(db, tms_id=token_tms_id, trixel_ids=updates.keys()):
-            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only change delegated trixels!")
+    if not await crud.does_tms_own_trixels(db, tms_id=token_tms_id, trixel_ids=updates.keys()):
+        raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Can only change delegated trixels!")
 
-        await crud.batch_upsert_trixel_map(db, updates=updates, type_=type)
-    except ValueError:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
+    await crud.batch_upsert_trixel_map(db, updates=updates, type_=type)
 
 
 @app.get(
@@ -228,23 +209,18 @@ async def batch_update_trixel_sensor_count(
     summary="Get the TMS responsible for a specific trixel.",
     tags=[TAG_TRIXEL_INFO],
     responses={
-        400: {"content": {"application/json": {"example": {"detail": "Invalid trixel id!"}}}},
         404: {"content": {"application/json": {"example": {"detail": "No responsible TMS found!"}}}},
     },
 )
 async def get_responsible_tms(
-    trixel_id: Annotated[int, Path(description="The Trixel id for which the TMS is determined.")],
+    trixel_id: Annotated[TrixelID, Path(description="The Trixel id for which the TMS is determined.")],
     db: AsyncSession = Depends(get_db),
 ) -> TrixelManagementServer:
     """Get the TMS responsible for a Trixel."""
-    try:
-        if (result := await crud.get_responsible_tms(db, trixel_id=trixel_id)) is not None:
-            return result
-        else:
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No responsible TMS found!")
-
-    except ValueError:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid trixel id!")
+    if (result := await crud.get_responsible_tms(db, trixel_id=trixel_id)) is not None:
+        return result
+    else:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No responsible TMS found!")
 
 
 def main() -> None:

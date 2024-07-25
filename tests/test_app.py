@@ -42,12 +42,12 @@ def test_update_trixel_sensor_count_temperature(empty_db):
     )
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
-    assert data["id"] == 15
+    assert data["trixel_id"] == 15
 
     response = client.get("/trixel/15/sensor_count?types=ambient_temperature")
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
-    assert data["id"] == 15
+    assert data["trixel_id"] == 15
     assert len(data["sensor_counts"]) == 1
     assert "ambient_temperature" in data["sensor_counts"]
     assert data["sensor_counts"]["ambient_temperature"] == 3
@@ -61,12 +61,12 @@ def test_update_trixel_sensor_count_humidity():
     )
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
-    assert data["id"] == 15
+    assert data["trixel_id"] == 15
 
     response = client.get("/trixel/15/sensor_count?types=relative_humidity")
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
-    assert data["id"] == 15
+    assert data["trixel_id"] == 15
     assert len(data["sensor_counts"]) == 1
     assert "relative_humidity" in data["sensor_counts"]
     assert data["sensor_counts"]["relative_humidity"] == 4
@@ -79,7 +79,7 @@ def test_update_trixel_invalid_id(id: int):
     response = client.put(
         f"/trixel/{id}/sensor_count/ambient_temperature?sensor_count=4", headers={"token": pytest.tms_token}
     )
-    assert response.status_code == HTTPStatus.BAD_REQUEST, response.text
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, response.text
 
 
 @pytest.mark.order(102)
@@ -106,7 +106,7 @@ def test_update_trixel_sensor_count_combined():
     response = client.get("/trixel/15/sensor_count")
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
-    assert data["id"] == 15
+    assert data["trixel_id"] == 15
     assert len(data["sensor_counts"]) == 2
 
 
@@ -118,12 +118,12 @@ def test_update_trixel_sensor_count_overwrite():
     )
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
-    assert data["id"] == 15
+    assert data["trixel_id"] == 15
 
     response = client.get("/trixel/15/sensor_count?types=ambient_temperature")
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
-    assert data["id"] == 15
+    assert data["trixel_id"] == 15
     assert len(data["sensor_counts"]) == 1
     assert "ambient_temperature" in data["sensor_counts"]
     assert data["sensor_counts"]["ambient_temperature"] == 8
@@ -220,7 +220,7 @@ def test_bulk_update_trixel_sensor_count_humidity():
         assert response.status_code == HTTPStatus.OK, response.text
         get_data = response.json()
         print(get_data)
-        assert get_data["id"] == trixel_id
+        assert get_data["trixel_id"] == trixel_id
         assert "relative_humidity" in get_data["sensor_counts"]
         assert get_data["sensor_counts"]["relative_humidity"] == sensor_count
 
@@ -231,7 +231,7 @@ def test_empty_sensor_count(empty_db):
     response = client.get("/trixel/15/sensor_count")
     assert response.status_code == HTTPStatus.OK, response.text
     data = response.json()
-    assert data["id"] == 15
+    assert data["trixel_id"] == 15
     assert len(data["sensor_counts"]) == 0
 
 
@@ -240,7 +240,7 @@ def test_empty_sensor_count(empty_db):
 def test_get_sensor_count_invalid_id(id: int):
     """Test invalid trixel ID on get sensor_count endpoint."""
     response = client.get(f"/trixel/{id}/sensor_count")
-    assert response.status_code == HTTPStatus.BAD_REQUEST, response.text
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, response.text
 
 
 @pytest.mark.order(100)
@@ -250,7 +250,7 @@ def test_get_tms_for_trixel_invalid(empty_db):
     assert response.status_code == HTTPStatus.NOT_FOUND, response.text
 
     response = client.get("/trixel/2/TMS")
-    assert response.status_code == HTTPStatus.BAD_REQUEST, response.text
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, response.text
 
 
 @pytest.mark.order(100)

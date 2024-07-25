@@ -2,9 +2,33 @@
 
 from typing import Annotated
 
-from pydantic import BaseModel, Field, NonNegativeInt, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    NonNegativeInt,
+    PositiveInt,
+    field_validator,
+)
+from pynyhtm import HTM
 
 from model import MeasurementTypeEnum
+
+
+def validate_trixel_id(value: int) -> int:
+    """Validate that the TrixelId is valid."""
+    try:
+        HTM.get_level(value)
+        return value
+    except Exception:
+        raise ValueError(f"Invalid trixel id: {value}!")
+
+
+TrixelID = Annotated[
+    PositiveInt,
+    AfterValidator(validate_trixel_id),
+    Field(description="A valid Trixel ID.", examples={8, 9, 15, 35}, serialization_alias="trixel_id"),
+]
 
 
 class Ping(BaseModel):
@@ -22,7 +46,7 @@ class Version(BaseModel):
 class TrixelMapBase(BaseModel):
     """Base Schema for trixel map entries."""
 
-    id: int
+    id: TrixelID
 
 
 class TrixelMap(TrixelMapBase):
@@ -56,7 +80,7 @@ class TrixelMapUpdate(TrixelMapBase):
 
 BatchSensorMapUpdate = Annotated[
     dict[
-        Annotated[int, Field(description="A valid trixel identifier.")],
+        Annotated[TrixelID, Field(description="A valid trixel identifier.")],
         Annotated[NonNegativeInt, Field(description="The new sensor count for the given trixel.")],
     ],
     Field(description="A map which contains the new sensors count for multiple trixels."),

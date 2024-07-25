@@ -12,6 +12,7 @@ from sqlalchemy.orm import aliased
 
 from crud import add_level_lookup
 from database import except_columns
+from schema import TrixelID
 
 from . import model
 
@@ -150,7 +151,7 @@ async def update_tms(
     return (await db.execute(query)).one()
 
 
-async def insert_delegations(db: AsyncSession, tms_id: int, trixel_ids: list[int]) -> model.TMSDelegation:
+async def insert_delegations(db: AsyncSession, tms_id: int, trixel_ids: list[TrixelID]) -> model.TMSDelegation:
     """
     Insert one or more trixel delegations into the database.
 
@@ -159,12 +160,11 @@ async def insert_delegations(db: AsyncSession, tms_id: int, trixel_ids: list[int
     :param tms_id: id of the TMS in charge
     :param trixel_ids: list of ids which are delegated
     :returns: list of TMS delegations
-    :raises ValueError: if one of trixel ids is invalid
     """
     query = select(*except_columns(model.TrixelManagementServer, "token_secret")).where(
         model.TrixelManagementServer.id == tms_id
     )
-    tms: model.TrixelManagementServer = (await db.execute(query)).first()
+    tms: model.TrixelManagementServer | None = (await db.execute(query)).first()
 
     if tms is None:
         raise RuntimeError(f"TMS with id {tms_id} does not exist!")
@@ -175,10 +175,7 @@ async def insert_delegations(db: AsyncSession, tms_id: int, trixel_ids: list[int
     delegations = list()
     level_lookup = dict()
     for trixel in trixel_ids:
-        try:
-            level = HTM.get_level(trixel)
-        except ValueError:
-            raise ValueError(f"Invalid trixel id: {trixel}")
+        level = HTM.get_level(trixel)
         tms_delegation = model.TMSDelegation(tms_id=tms.id, trixel_id=trixel)
         db.add(tms_delegation)
         delegations.append(tms_delegation)
