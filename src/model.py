@@ -53,7 +53,7 @@ class TrixelMap(Base):
 
     # Combined primary key from id, type
     id = Column(BigInteger, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False, index=True)
-    type_id = Column(Integer, ForeignKey("MeasurementType.id"), primary_key=True, nullable=False)
+    type_id = Column(Integer, ForeignKey("MeasurementType.id", ondelete="CASCADE"), primary_key=True, nullable=False)
     sensor_count = Column(Integer, default=0, nullable=False)
 
     __table_args__ = (

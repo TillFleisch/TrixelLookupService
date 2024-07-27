@@ -37,7 +37,13 @@ class TMSDelegation(Base):
 
     __tablename__ = "TMSDelegation"
 
-    tms_id = Column(Integer, ForeignKey("TrixelManagementServer.id"), primary_key=True, nullable=False, index=True)
+    tms_id = Column(
+        Integer,
+        ForeignKey("TrixelManagementServer.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+        index=True,
+    )
     trixel_id = Column(BigInteger, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False, index=True)
     exclude = Column(Boolean, default=False, nullable=False)
 
