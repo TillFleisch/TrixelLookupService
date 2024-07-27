@@ -3,6 +3,7 @@
 import enum
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Column,
     ForeignKey,
@@ -51,7 +52,7 @@ class TrixelMap(Base):
     __tablename__ = "TrixelMap"
 
     # Combined primary key from id, type
-    id = Column(Integer, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False, index=True)
+    id = Column(BigInteger, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False, index=True)
     type_id = Column(Integer, ForeignKey("MeasurementType.id"), primary_key=True, nullable=False)
     sensor_count = Column(Integer, default=0, nullable=False)
 
@@ -66,7 +67,7 @@ class LevelLookup(Base):
 
     __tablename__ = "LevelLookup"
 
-    trixel_id = Column(Integer, primary_key=True, nullable=False, unique=True, index=True)
+    trixel_id = Column(BigInteger, primary_key=True, nullable=False, unique=True, index=True)
     level = Column(Integer, nullable=False)
 
     __table_args__ = (CheckConstraint(level >= 0, name="check_non_negative_level"),)

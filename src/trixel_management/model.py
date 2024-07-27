@@ -1,6 +1,7 @@
 """Database model definitions related to TMS management."""
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     ForeignKey,
@@ -37,7 +38,7 @@ class TMSDelegation(Base):
     __tablename__ = "TMSDelegation"
 
     tms_id = Column(Integer, ForeignKey("TrixelManagementServer.id"), primary_key=True, nullable=False, index=True)
-    trixel_id = Column(Integer, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False, index=True)
+    trixel_id = Column(BigInteger, ForeignKey("LevelLookup.trixel_id"), primary_key=True, nullable=False, index=True)
     exclude = Column(Boolean, default=False, nullable=False)
 
     tms = relationship("TrixelManagementServer", back_populates="delegations")
